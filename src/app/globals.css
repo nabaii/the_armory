@@ -1,0 +1,13 @@
+/* ============================================================================
+   THE ARMORY SHOOTING SPORTS CLUB — global stylesheet entry point
+
+   Order is deliberate:
+     1. Tailwind, which also resolves the local @imports below.
+     2. tokens.css  — the @theme block. Generates every utility.
+     3. base.css    — element defaults and graphic devices, into layer(base)
+                      so that utilities always win over them.
+   ========================================================================= */
+
+@import "tailwindcss";
+@import "../styles/tokens.css";
+@import "../styles/base.css" layer(base);

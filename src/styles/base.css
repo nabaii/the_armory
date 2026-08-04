@@ -1,0 +1,309 @@
+/* ============================================================================
+   BASE STYLES — element defaults, accessibility, and the graphic devices
+   from Brand Guidelines §8. Tokens live in tokens.css.
+   ========================================================================= */
+
+:root {
+  /* Never let the browser invert form controls or scrollbars. There is no
+     dark mode; dark sections are a brand decision, not a user preference. */
+  color-scheme: light;
+
+  /* Sticky header height. Fixed rather than intrinsic so the mobile panel and
+     anchor offsets can rely on it without measuring at runtime. */
+  --header-h: 4.5rem; /* 72px */
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --header-h: 5rem; /* 80px */
+  }
+}
+
+html {
+  /* Anchor targets must clear the sticky header. */
+  scroll-padding-top: calc(var(--header-h) + var(--spacing) * 2);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ----------------------------------------------------------------------------
+   SKIP LINK — spec §7 requires full keyboard navigability. Visually hidden
+   until focused, then rendered as a normal control.
+   ------------------------------------------------------------------------- */
+
+.u-skip-link {
+  position: absolute;
+  top: calc(var(--spacing) * 1);
+  left: calc(var(--spacing) * 1);
+  z-index: 100;
+  transform: translateY(-200%);
+  background-color: var(--color-reticle-black);
+  color: var(--color-chalk);
+  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 2);
+  border-radius: var(--radius-control);
+  text-decoration: none;
+}
+
+.u-skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+body {
+  background-color: var(--color-chalk);
+  color: var(--color-reticle-black);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Guard against any single element forcing a horizontal scrollbar. */
+  overflow-x: hidden;
+}
+
+/* Headings take the display face. Authority comes from density, so tracking
+   and leading are tight — set per-token in tokens.css. */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  /* Avoid orphaned words in short display lines. */
+  text-wrap: balance;
+}
+
+/* Lead and body paragraphs: never let a line orphan its last word. */
+p {
+  text-wrap: pretty;
+}
+
+/* ----------------------------------------------------------------------------
+   FOCUS — spec §7 requires visible focus states throughout.
+   Ten Ring Red is used as a *graphic* indicator (3:1 threshold), and it
+   clears that on every ground in the palette: 3.79:1 on Chalk, 3.70:1 on
+   Charred Timber. The offset keeps it legible over photography too.
+   ------------------------------------------------------------------------- */
+
+:focus-visible {
+  outline: 2px solid var(--color-ten-ring-red);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+/* Only remove the default ring where we have replaced it above. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+::selection {
+  background-color: var(--color-ten-ring-red);
+  color: #fff;
+}
+
+/* ----------------------------------------------------------------------------
+   MOTION — spec §6. Honour the user's preference completely, not partially.
+   ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================================
+   UTILITIES
+   ========================================================================= */
+
+/* --- Tabular numerals -------------------------------------------------------
+   Non-negotiable per Brand Guidelines §5. Applied to the data type token,
+   every table, and anywhere numbers stack. Standings, scores, prices, specs.
+   -------------------------------------------------------------------------- */
+
+.u-tabular,
+table,
+time,
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* --- Display width ---------------------------------------------------------
+   Archivo's variable width axis reaches the "Expanded" register without a
+   second font file. Slight width is what makes the display face read as a
+   governing body rather than a start-up (Brand Guidelines §5).
+   -------------------------------------------------------------------------- */
+
+.u-display-wide {
+  font-family: var(--font-display);
+  font-stretch: 112%;
+  font-variation-settings: "wdth" 112;
+}
+
+/* --- Kicker ----------------------------------------------------------------
+   Small capitals with wide tracking. Labels, section kickers, the descriptor.
+   Echoes the lockup and is a signature device.
+   -------------------------------------------------------------------------- */
+
+.u-kicker {
+  font-family: var(--font-display);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-kicker);
+  line-height: 1;
+}
+
+/* --- Measure ---------------------------------------------------------------
+   Text measure capped at 68 characters (spec §6).
+   -------------------------------------------------------------------------- */
+
+.u-measure {
+  max-width: var(--container-measure);
+}
+
+/* --- Segmented rule -------------------------------------------------------
+   The broken-ring geometry of the mark translated into a horizontal divider
+   (Brand Guidelines §8). Derived from the reticle's tick elements, so it is
+   taken from the identity rather than invented.
+   -------------------------------------------------------------------------- */
+
+.u-rule-segmented {
+  height: 1px;
+  border: 0;
+  background-image: repeating-linear-gradient(
+    to right,
+    currentColor 0,
+    currentColor calc(var(--spacing) * 3),
+    transparent calc(var(--spacing) * 3),
+    transparent calc(var(--spacing) * 4)
+  );
+  color: var(--color-sight-grey);
+  opacity: 0.55;
+}
+
+/* --- Section entry --------------------------------------------------------
+   The single permitted motion device: a short fade and translation on entry.
+   Fades and short translations only — no parallax, no counters.
+   -------------------------------------------------------------------------- */
+
+@keyframes armory-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--spacing) * 2));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.u-enter {
+  animation: armory-enter var(--duration-slow) var(--ease-precision) both;
+}
+
+/* ============================================================================
+   HERO OVERLAY — the treatment spec §5 asks for and the guidelines leave open.
+
+   Design Specification §5 requires that hero "text must remain legible over
+   photography" and defers the treatment to the Brand Guidelines. The Brand
+   Guidelines do not specify one; §7 only rules out what it must NOT be —
+   "avoid hard flash, cold light, noir contrast and heavy vignetting" — and §11
+   forbids pure black. §9 then makes WCAG AA an acceptance criterion.
+
+   That combination cannot be satisfied by eyeballing a scrim over a photograph
+   that does not exist yet. So the scrim is derived instead, from the worst case.
+
+   ----------------------------------------------------------------------------
+   THE PROOF
+
+   Browsers composite normal-blend alpha in sRGB gamma space, so the effective
+   backdrop behind hero text is  a*scrim + (1-a)*photo  per channel. The worst
+   possible photograph is a pure white frame. Solving for AA (4.5:1) with a
+   Charred Timber scrim:
+
+       Chalk    #F6F5F2 text  requires  alpha >= 0.654
+       Terrazzo #DCD8D1 text  requires  alpha >= 0.735
+
+   At the chosen alpha of 0.80, against a PURE WHITE image:
+
+       Chalk     7.32:1     Terrazzo  5.62:1      both AA body
+
+   Over realistic mid-tone photography the same alpha yields 10.58:1. So hero
+   text is compliant regardless of which frame the shoot delivers, and no
+   per-image review is needed to keep it that way.
+
+   ----------------------------------------------------------------------------
+   WHY IT IS TWO LAYERS
+
+   A flat 0.80 scrim across the whole frame would satisfy contrast and destroy
+   the photography — and §7 is explicit that we "do not degrade hero quality to
+   hit a score". So the guarantee is applied only where text actually sits:
+
+     .u-hero-veil  a soft overall gradient, aesthetic only, no guarantee.
+                   Unifies the frame and seats the composition. Max 0.28.
+     .u-hero-zone  a FLAT guaranteed 0.80 behind the text, with a feathered
+                   top edge so it reads as light falling off rather than as a
+                   band. This is the layer the proof above applies to.
+
+   Charred Timber, never neutral grey or black: §4 makes warmth mandatory in
+   the neutrals, and a cool scrim over warm materials is exactly the "drift
+   toward gunmetal" §11 prohibits.
+   ========================================================================= */
+
+.u-hero-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-charred-timber) 28%, transparent) 0%,
+    color-mix(in srgb, var(--color-charred-timber) 16%, transparent) 45%,
+    transparent 85%
+  );
+}
+
+.u-hero-zone {
+  position: relative;
+  /* The guaranteed floor. Do not lower this value — see the proof above. */
+  background-color: color-mix(
+    in srgb,
+    var(--color-charred-timber) 80%,
+    transparent
+  );
+}
+
+/* Feathered top edge, drawn ABOVE the text block so the flat scrim behind the
+   text is never reduced. 96px of falloff reads as light, not as a rectangle. */
+.u-hero-zone::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 100%;
+  height: calc(var(--spacing) * 12);
+  pointer-events: none;
+  background-image: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-charred-timber) 80%, transparent) 0%,
+    color-mix(in srgb, var(--color-charred-timber) 40%, transparent) 55%,
+    transparent 100%
+  );
+}
+
+/* ----------------------------------------------------------------------------
+   TEXTURE — PENDING PHOTOGRAPHY
+   Brand Guidelines §6 supplies a ready-made texture library (terrazzo, teak,
+   charred cladding, steel mesh, gabion) and is explicit that these should be
+   *photographed from the building*, not invented. They are therefore not
+   implemented here as CSS approximations. They land as image tokens after the
+   commissioned shoot delivers the material close-ups on the shot list.
+   ------------------------------------------------------------------------- */

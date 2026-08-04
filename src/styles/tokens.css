@@ -1,0 +1,234 @@
+/* ============================================================================
+   THE ARMORY SHOOTING SPORTS CLUB — DESIGN TOKENS
+   ----------------------------------------------------------------------------
+   Source of truth: docs/03_The_Armory_Brand_Guidelines.docx  (colour, type)
+                    docs/02_The_Armory_Design_Specification.docx  (§6 structure)
+
+   Tailwind v4 @theme. Every token here generates utilities, so the design
+   system is enforced by the toolchain rather than by discipline.
+
+   TWO DELIBERATE DEVIATIONS FROM TAILWIND DEFAULTS — read before using:
+
+   1. --spacing is 0.5rem (8px), not 0.25rem. The spec mandates an 8px base
+      unit and the scale 8/16/24/32/48/64/96/128. That scale now maps exactly
+      onto Tailwind's integers: p-1 p-2 p-3 p-4 p-6 p-8 p-12 p-16. A 4px value
+      is not expressible, which is the point — "whitespace is the primary
+      signal of premium positioning" (spec §6). NOTE this affects width and
+      height utilities too: h-12 is 96px here, not 48px.
+
+   2. Breakpoints are 480/768/1024/1440 per spec §6, and 2xl is removed.
+
+   NO DARK MODE. Dark sections are a brand decision (Charred Timber grounds),
+   not a user preference. A brand this controlled does not auto-invert.
+   ========================================================================= */
+
+@theme {
+  /* --------------------------------------------------------------------------
+     COLOUR — CORE, sampled from the mark
+     Contrast ratios below are measured, not estimated. WCAG 2.1: body text
+     needs 4.5:1, large text (>=24px, or >=18.66px bold) and graphics need 3:1.
+     ----------------------------------------------------------------------- */
+
+  /* Primary type. Warm near-black — never #000, which reads cold and tactical. */
+  --color-reticle-black: #2a2a2b; /* 13.15:1 on Chalk — AA body */
+
+  /* A genuine brand colour, not a neutral. Rules, dividers, quiet UI, large
+     labels. NOT for body text — see --color-sight-ink. */
+  --color-sight-grey: #727377; /*  4.34:1 on Chalk — large text / UI only */
+
+  /* The centre dot. Graphic accent, large display figures, the one thing that
+     matters on a screen. NOT for text at body size — see --color-ten-ring-deep. */
+  --color-ten-ring-red: #ed3036; /*  3.79:1 on Chalk — AA graphics/large only */
+
+  /* Primary ground. The white render of the buildings. */
+  --color-chalk: #f6f5f2;
+
+  /* --------------------------------------------------------------------------
+     COLOUR — DERIVED (added by the build team, verified against WCAG 2.1 AA)
+
+     The Brand Guidelines assign Sight Grey to "secondary type" and Ten Ring
+     Red to "primary calls to action", then ask that both be verified for
+     contrast. Both fail at body size: white-on-red measures 4.14:1 and
+     Sight-Grey-on-Chalk measures 4.34:1, against a 4.5:1 requirement that
+     spec §9 makes an acceptance criterion.
+
+     These two tokens resolve that without altering the visual system: the
+     logo dot and the graphic accent keep the exact colours of the mark, and
+     only text-bearing surfaces use the deeper values.
+     ----------------------------------------------------------------------- */
+
+  /* Text-bearing red ONLY: button fills, inline links, small labels. */
+  --color-ten-ring-deep: #c81e24; /* 5.73:1 vs white · 5.25:1 on Chalk — AA body */
+
+  /* Secondary TEXT. Reads as Sight Grey, passes on both light grounds. */
+  --color-sight-ink: #5a5b5e; /* 6.23:1 on Chalk · 4.78:1 on Terrazzo — AA body */
+
+  /* --------------------------------------------------------------------------
+     COLOUR — MATERIAL, sampled from the LaRosa architecture
+     The website should look like it belongs on that deck.
+     ----------------------------------------------------------------------- */
+
+  /* Floors throughout, reception desk, bar counters. Section grounds, cards. */
+  --color-terrazzo: #dcd8d1; /* carries Reticle Black at 10.10:1 */
+
+  /* Firing-line counters, screens, lattice. Strongest anti-tactical signal. */
+  --color-range-teak: #8a5a2e; /* DARK GROUND — Chalk type at 5.38:1 */
+
+  /* Deck boards. Sunlit warmth — hospitality and events contexts. */
+  --color-deck-oak: #c29a63;
+
+  /* Ribbed cladding of the service building. Dark sections, footers, night. */
+  --color-charred-timber: #262523; /* DARK GROUND — Chalk type at 14.05:1 */
+
+  /* Stone-cage cladding. Textural surfaces, photographic mid-tones. */
+  --color-gabion-stone: #9a9188;
+
+  /* --------------------------------------------------------------------------
+     COLOUR — ACCENT, the architect's decision
+     Encodes ACCESS. Blue for open contexts (first visit, bar, groups); teal
+     for member and VIP contexts. This mirrors the actual deck furniture and
+     makes the tiering felt rather than announced.
+     ----------------------------------------------------------------------- */
+
+  /* Painted soffits and public deck furniture. A LIGHT GROUND — the only
+     palette colour that clears AA on it is Reticle Black (5.64:1). Never
+     use Soffit Blue as a text colour. */
+  --color-soffit-blue: #8fa6b2;
+
+  /* VIP deck furniture. Deeper, more private — it should feel earned.
+     A DARK GROUND — Chalk type at 5.32:1. */
+  --color-vip-teal: #2f6e78;
+
+  /* --------------------------------------------------------------------------
+     TYPOGRAPHY
+
+     Display: Archivo — institutional grotesque with sporting authority. The
+     variable font carries a width axis, so Archivo Expanded is reachable via
+     font-stretch rather than a second file (see --tracking / .u-display).
+     Body: Inter — legible at small sizes on mid-range Android.
+
+     IBM Plex Mono for score readouts is deferred to Phase 2 with Leagues.
+     It buys nothing at launch and costs ~25KB against a 1.5MB budget.
+     ----------------------------------------------------------------------- */
+
+  --font-display: var(--font-archivo), "Archivo", system-ui, sans-serif;
+  --font-body: var(--font-inter), "Inter", system-ui, sans-serif;
+  --font-data: var(--font-archivo), "Archivo", system-ui, sans-serif;
+
+  /* --------------------------------------------------------------------------
+     TYPE SCALE — spec §6
+
+     Fluid via clamp() between the 480px and 1440px breakpoints, landing
+     exactly on the specified mobile and desktop values at each end rather
+     than snapping at a breakpoint. The clamp minimum is in rem so user font
+     scaling is never trapped.
+
+     token      480px -> 1440px      use
+     display    40 -> 64            hero headline
+     h1         32 -> 48            page title
+     h2         24 -> 32            section heading
+     h3         19 -> 22            sub-heading
+     body-lg    18 -> 20            lead paragraph
+     body       16 -> 17            default
+     caption    13 -> 14            captions, legal, metadata
+     data       16 -> 17            scores and specs (tabular numerals)
+     ----------------------------------------------------------------------- */
+
+  --text-display: clamp(2.5rem, 1.75rem + 2.5vw, 4rem);
+  --text-display--line-height: 1.02;
+  --text-display--letter-spacing: -0.035em;
+  --text-display--font-weight: 700;
+
+  --text-h1: clamp(2rem, 1.5rem + 1.6667vw, 3rem);
+  --text-h1--line-height: 1.06;
+  --text-h1--letter-spacing: -0.03em;
+  --text-h1--font-weight: 700;
+
+  --text-h2: clamp(1.5rem, 1.25rem + 0.8333vw, 2rem);
+  --text-h2--line-height: 1.12;
+  --text-h2--letter-spacing: -0.022em;
+  --text-h2--font-weight: 700;
+
+  --text-h3: clamp(1.1875rem, 1.09375rem + 0.3125vw, 1.375rem);
+  --text-h3--line-height: 1.25;
+  --text-h3--letter-spacing: -0.015em;
+  --text-h3--font-weight: 700;
+
+  --text-body-lg: clamp(1.125rem, 1.0625rem + 0.2083vw, 1.25rem);
+  --text-body-lg--line-height: 1.6;
+  --text-body-lg--letter-spacing: -0.005em;
+
+  --text-body: clamp(1rem, 0.96875rem + 0.1042vw, 1.0625rem);
+  --text-body--line-height: 1.65;
+
+  --text-caption: clamp(0.8125rem, 0.78125rem + 0.1042vw, 0.875rem);
+  --text-caption--line-height: 1.5;
+
+  --text-data: clamp(1rem, 0.96875rem + 0.1042vw, 1.0625rem);
+  --text-data--line-height: 1.4;
+
+  /* Lane numerals — the building's own large plain firing-point numbering,
+     borrowed as a display device (guidelines §8). Oversized tabular figures. */
+  --text-lane: clamp(3rem, 1.5rem + 5vw, 6.5rem);
+  --text-lane--line-height: 0.86;
+  --text-lane--letter-spacing: -0.04em;
+  --text-lane--font-weight: 700;
+
+  /* Small capitals with wide tracking — labels, kickers, the descriptor.
+     Echoes the lockup and is a signature device (guidelines §5).
+
+     §5 states the range explicitly: "Small capitals with wide tracking (60-130
+     units) for labels, kickers and the descriptor." These were originally set
+     at 160 and 220, both outside it. Corrected after measuring the header:
+     over-tracked nav labels overflowed the 1280px container and wrapped to two
+     lines at every desktop width, including 1600px.
+
+     120 sits near the top of the permitted range — still wide and
+     authoritative, and it buys back roughly 90px across five nav items. */
+  --tracking-kicker: 0.12em; /* 120 units — labels and kickers */
+
+  /* The lockup descriptor keeps more air than body labels, because it is set
+     smaller and must read as a separate element beneath the wordmark. Held at
+     the top of the §5 range rather than above it. */
+  --tracking-descriptor: 0.13em; /* 130 units — the lockup descriptor */
+
+  /* --------------------------------------------------------------------------
+     SPACING — 8px base. See the header note; this is not the Tailwind default.
+     1=8  2=16  3=24  4=32  6=48  8=64  12=96  16=128
+     ----------------------------------------------------------------------- */
+
+  --spacing: 0.5rem;
+
+  /* --------------------------------------------------------------------------
+     LAYOUT — spec §6
+     ----------------------------------------------------------------------- */
+
+  --container-content: 80rem; /* 1280px max content width */
+  --container-measure: 68ch; /* text measure cap — 68 characters */
+
+  --breakpoint-sm: 30rem; /* 480 */
+  --breakpoint-md: 48rem; /* 768 */
+  --breakpoint-lg: 64rem; /* 1024 */
+  --breakpoint-xl: 90rem; /* 1440 */
+  --breakpoint-2xl: initial; /* removed — not in the spec */
+
+  /* --------------------------------------------------------------------------
+     RADII — precision equipment has crisp edges. The descriptor in the mark
+     is squared; the terrazzo and steel of the building are not soft.
+     ----------------------------------------------------------------------- */
+
+  --radius-none: 0;
+  --radius-control: 2px; /* buttons, inputs */
+  --radius-panel: 0; /* cards and panels are square */
+
+  /* --------------------------------------------------------------------------
+     MOTION — spec §6. Restrained: fades and short translations only.
+     No parallax, no scroll-jacking, no counters. 200-400ms, ease-out.
+     "Motion should feel like precision equipment, not a promo video."
+     ----------------------------------------------------------------------- */
+
+  --ease-precision: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 200ms;
+  --duration-base: 300ms;
+  --duration-slow: 400ms;
+}
