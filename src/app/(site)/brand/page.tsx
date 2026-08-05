@@ -78,18 +78,27 @@ export default function BrandPage() {
           the reticle alone, restricted to favicons, avatars and embroidery.
         </Body>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* `w-[220px]` here was a box width, not a lockup size — the span
+            stretched to 220px while the mark inside stayed 191px, and in the
+            two-up cell at 480px the fixed box then overhung the viewport by
+            21px. Setting `--lockup-fs` scales the mark itself, which is what
+            these specimens are meant to be showing, and `max-w-full` keeps
+            them inside whatever cell they land in. */}
+        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <SwatchFrame label="Full horizontal — default">
-            <Lockup className="w-[220px] text-reticle-black" />
+            <Lockup className="max-w-full text-reticle-black" />
           </SwatchFrame>
           <SwatchFrame label="Stacked — square formats">
-            <Lockup variant="stacked" className="w-[180px] text-reticle-black" />
+            <Lockup
+              variant="stacked"
+              className="max-w-full text-reticle-black [--lockup-fs:1.125rem]"
+            />
           </SwatchFrame>
           <SwatchFrame label="Reticle only — min 24px">
             <Reticle className="size-6" title="The Armory Shooting Sports Club" />
           </SwatchFrame>
           <SwatchFrame label="Single colour on dark" dark>
-            <Lockup mono className="w-[220px] text-chalk" />
+            <Lockup mono className="max-w-full text-chalk" />
           </SwatchFrame>
         </div>
 

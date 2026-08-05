@@ -1,39 +1,38 @@
 import type { Metadata } from "next";
-import { Section } from "@/components/layout/Section";
-import { CtaPair } from "@/components/ui/Button";
-import { Body, H1, Kicker } from "@/components/ui/Text";
-import { cta } from "@/lib/site";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/layout/Footer";
+import NotFoundContent from "@/app/(site)/not-found";
 
 /**
- * Custom 404.
+ * The GLOBAL 404 — a URL that matched no route at all.
  *
- * This page exists for a brand reason as much as a UX one. Next's built-in
- * not-found styles are injected inline as `body{color:#000;background:#fff}`
- * plus a `prefers-color-scheme: dark` block that inverts to pure black.
+ * `(site)/not-found.tsx` handles anything raised inside the website group and
+ * inherits the chrome from that group's layout. This one sits above every
+ * group, so it renders the chrome itself; without it, an unmatched URL would
+ * arrive at the bare document shell with no header, no footer and no way back.
  *
- * Brand Guidelines §11 prohibits both: "Pure black, cool greys, and any palette
- * drift toward gunmetal" heads the list of things to avoid, and the brand has
- * no dark mode — dark sections are Charred Timber, chosen deliberately, not an
- * inversion triggered by an OS setting. Defining this route replaces those
- * defaults entirely.
+ * The content is the same component, so the two can never drift apart.
  *
- * Voice: assured and spare. No apology, no exclamation mark, no hype.
+ * Both exist for a brand reason as much as a UX one: Next's built-in not-found
+ * injects `body{color:#000;background:#fff}` plus a `prefers-color-scheme: dark`
+ * inversion to pure black, and Brand Guidelines §11 forbids both.
  */
 export const metadata: Metadata = {
   title: "Page not found",
   robots: { index: false, follow: false },
 };
 
-export default function NotFound() {
+export default function GlobalNotFound() {
   return (
-    <Section ground="chalk" rhythm="default">
-      <Kicker className="mb-3">404</Kicker>
-      <H1>That page isn&rsquo;t here.</H1>
-      <Body muted className="mt-3">
-        It may have moved, or the link may be incomplete. The club, the ranges
-        and the first visit are all a step away.
-      </Body>
-      <CtaPair primary={cta.primary} secondary={cta.secondary} className="mt-4" />
-    </Section>
+    <>
+      <a href="#main" className="u-skip-link">
+        Skip to content
+      </a>
+      <Header />
+      <main id="main" className="flex-1">
+        <NotFoundContent />
+      </main>
+      <Footer />
+    </>
   );
 }

@@ -1,12 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import { fontVariables } from "@/lib/fonts";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
 import { site } from "@/lib/site";
 import "./globals.css";
 
 /* ============================================================================
-   ROOT LAYOUT
+   ROOT LAYOUT — the document shell only.
+
+   Header, footer and the skip link live in `(site)/layout.tsx`, one level down.
+   That is so the live tournament screen can exist without them: `/screen` is a
+   television on a wall in a room where people are shooting, and site navigation
+   there is meaningless. Hiding the chrome with CSS would leave it in the tab
+   order, which matters because the range officer's control panel is operated by
+   keyboard.
 
    Metadata follows Brand Guidelines §2, which is stricter than it first looks:
    the full name with descriptor belongs "in every metadata field — page titles,
@@ -61,17 +66,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en-NG" className={`${fontVariables} h-full`}>
-      <body className="flex min-h-full flex-col">
-        {/* Spec §7: full keyboard navigability. */}
-        <a href="#main" className="u-skip-link">
-          Skip to content
-        </a>
-        <Header />
-        <main id="main" className="flex-1">
-          {children}
-        </main>
-        <Footer />
-      </body>
+      <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );
 }

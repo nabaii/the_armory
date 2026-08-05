@@ -294,6 +294,87 @@ export const contentGate: GateItem[] = [
       "a restore actually performed, not just a checkbox ticked.",
   },
   {
+    id: "tournament-scoring-rule",
+    label: "Tournament winner — most rounds won, or highest aggregate?",
+    owner: "Founder",
+    resolved: true,
+    severity: "degraded",
+    phase: 2,
+    note:
+      "SETTLED: best of three rounds. The winner is the team that wins the most " +
+      "rounds, with the gross total as tiebreak — which is also the figure the " +
+      "live screen shows largest, so a tiebreak never looks arbitrary to the " +
+      "room. §1's 'gross, live' describes what the screen displays throughout; " +
+      "§4's 'best of three rounds' decides the result.",
+  },
+  {
+    id: "tournament-shots-per-turn",
+    label: "Shots per turn, and custom format limits",
+    owner: "Operations",
+    resolved: false,
+    severity: "degraded",
+    phase: 2,
+    note:
+      "§4 fixes formats, players, rounds and durations but not shots per turn. " +
+      "Five is assumed to fit the stated 45/90/20-minute slots. §9 also lists " +
+      "'custom format limits — maximum players, rounds and shots per round, to " +
+      "keep sessions within a bookable slot' as an open item.",
+  },
+  {
+    id: "live-screen-scope",
+    label: "Live screen — in launch scope, and on what hardware?",
+    owner: "Founder",
+    resolved: false,
+    severity: "blocker",
+    phase: 2,
+    note:
+      "§5: 'the only element of Leagues that genuinely requires software at " +
+      "launch'. Must run OFFLINE and be readable at 5-10 metres from the rail " +
+      "and bar seating — test there, not at a desk. The engine already accepts " +
+      "either input path, so the targeting-system answer does not block it: " +
+      "Path A automatic, Path B a range officer on a tablet.",
+  },
+  {
+    id: "ladder-window",
+    label: "Ladder rolling window length",
+    owner: "Founder",
+    resolved: false,
+    severity: "degraded",
+    phase: 2,
+    note:
+      "§7: 'Best rounds over a rolling window — window length to be set in the " +
+      "pilot.' §9 confirms it is set once real score distributions are visible. " +
+      "Blocks the Ladder, not the Tournament or the League.",
+  },
+  {
+    id: "season-prize",
+    label: "Season prize",
+    owner: "Founder",
+    resolved: false,
+    severity: "degraded",
+    phase: 2,
+    note:
+      "§9 recommendation: non-monetary and status-based — a trophy at " +
+      "reception, names engraved, a championship frame. Consistent with the " +
+      "brand and cheaper than discounts.",
+  },
+  {
+    id: "churn-signal-tracking",
+    label: "Season-one churn measurement — who STOPS submitting",
+    owner: "Founder",
+    resolved: false,
+    severity: "blocker",
+    phase: 2,
+    note:
+      "§3 and §9 name this 'the single most important thing to measure in the " +
+      "first season' and 'the only early warning you will get'. If beginners " +
+      "stop submitting after three or four weeks, the variance problem has " +
+      "surfaced and divisions or handicaps return to the table. The predicates " +
+      "exist in src/server/leagues/fixtures.ts (hasGoneQuiet, " +
+      "weeksSinceLastRound); what is outstanding is someone owning the number " +
+      "and acting on it.",
+  },
+  {
     id: "member-data-retention",
     label: "Retention schedule for attendance records",
     owner: "Legal",

@@ -44,6 +44,7 @@ CREATE TABLE "leagues" (
 	"season_id" uuid NOT NULL,
 	"captain_id" uuid NOT NULL,
 	"join_code" text NOT NULL,
+	"anchor_weekday" smallint DEFAULT 4 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -80,7 +81,7 @@ CREATE TABLE "scores" (
 CREATE TABLE "seasons" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"name" text NOT NULL,
-	"round_count" smallint NOT NULL,
+	"round_count" smallint DEFAULT 6 NOT NULL,
 	"discipline_slug" text DEFAULT '10m-air-rifle' NOT NULL,
 	"shots_per_round" smallint NOT NULL,
 	"max_score" smallint NOT NULL,

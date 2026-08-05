@@ -1,5 +1,5 @@
 {
-  "id": "f9f9adef-63cd-4860-8b84-7fa9bb00f486",
+  "id": "478b56c6-6e2b-4ffa-9e2b-330cda18f545",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -420,6 +420,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "anchor_weekday": {
+          "name": "anchor_weekday",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 4
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -811,7 +818,8 @@
           "name": "round_count",
           "type": "smallint",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": 6
         },
         "discipline_slug": {
           "name": "discipline_slug",

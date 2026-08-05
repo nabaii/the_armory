@@ -38,8 +38,17 @@ export function Nav() {
             Without both, flex shrinking wrapped every multi-word label onto two
             lines at every desktop width — measured at 1024, 1280, 1440 and
             1600. A nav item is either on one line or it does not belong in the
-            nav; wrapping made the header 45px of ragged text. */}
-        <ul className="flex items-center gap-3 xl:gap-4">
+            nav; wrapping made the header 45px of ragged text.
+
+            The gap opens at `xl` rather than starting wide. Five items means
+            four gaps, so every step here costs 32px of header — and at 1024px
+            the header did not have 32px to give: measured, it wanted 1102px of
+            content in a 1024px viewport and ran 79px past its own right
+            gutter. That had been true since this nav was written and was
+            invisible because `body { overflow-x: hidden }` clips rather than
+            scrolls. 16px still clears the 8px rhythm and reads as deliberate;
+            the wider setting returns at 1440 where there is room for it. */}
+        <ul className="flex items-center gap-2 xl:gap-4">
           {primaryNav.map((item) => {
             const active = isActive(pathname, item.href);
             return (
@@ -176,7 +185,9 @@ function MobilePanel({ pathname }: { pathname: string }) {
           aria-label="Site menu"
           className={cn(
             "fixed inset-x-0 top-[var(--header-h)] bottom-0 z-40",
-            "bg-chalk px-3 pt-4 pb-6",
+            /* Gutters track Container's, so the panel's rules and labels line
+               up with the header above them rather than sitting 8px inboard. */
+            "bg-chalk px-2 pt-4 pb-6 sm:px-4",
             "u-enter overflow-y-auto",
           )}
         >

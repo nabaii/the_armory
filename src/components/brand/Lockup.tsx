@@ -45,12 +45,54 @@ type Variant = "horizontal" | "stacked" | "reticle";
  * because "below this the descriptor becomes illegible".
  *   with descriptor : 140px digital
  *   reticle alone   :  24px
+ *
+ * ⚠ `min-w-[140px]` is a floor that CANNOT currently bind, and the number is
+ * kept because it records the rule, not because it does work. Measured: the
+ * live-text lockup is 191px at its default size and bottoms out at ~161px —
+ * the descriptor is held at an 8px legibility floor, and "SHOOTING SPORTS
+ * CLUB" at 8px with 130-unit tracking is 137px wide on its own. The 140px in
+ * §3 is a figure for the DRAWN wordmark that Option B will deliver; it is not
+ * reachable by Archivo set as live text. Do not "fix" this by lowering the
+ * descriptor floor to make the number achievable — that trades a real
+ * legibility guarantee for an arithmetic one.
  */
 const MIN = {
   horizontal: "min-w-[140px]",
   stacked: "min-w-[140px]",
   reticle: "min-w-[24px]",
 } as const;
+
+/* ----------------------------------------------------------------------------
+   SCALING — the lockup is ONE unit, driven by one font size.
+
+   Previously only the wordmark carried a size (`text-h3`); the reticle was
+   `size-4` and the gap was `gap-2`, both absolute. Two consequences, and the
+   second is the one that mattered:
+
+   1. A caller who made the wordmark smaller got a lockup with a reticle that
+      did not move — the proportions §3 fixes were silently redrawn.
+   2. The descriptor is sized in `em`, and with no font size on the lockup root
+      that `em` resolved against the inherited BODY size (16px), not against
+      the wordmark. So the descriptor sat at its 8px floor permanently and did
+      not scale with the mark in either direction.
+
+   Everything is now expressed in `em` against the root, so one custom property
+   scales the whole lockup and the proportions are preserved by construction.
+   The ratios below reproduce the previous rendering to within a sub-pixel at
+   the default size (measured: 191.6px against 191.3px), so this is a
+   refactor of the mechanism, not a change to the mark.
+
+     --lockup-fs   the wordmark size, and the em base for everything else.
+                   Defaults to the h3 token, which is what shipped before.
+   -------------------------------------------------------------------------- */
+
+const ROOT_SIZE = "[font-size:var(--lockup-fs,var(--text-h3))]";
+/** 32px at the default 19px wordmark — the previous `size-4`. */
+const RETICLE_SIZE = "size-[1.7em]";
+/** 16px at the default 19px wordmark — the previous `gap-2`. */
+const GAP_HORIZONTAL = "gap-[0.84em]";
+/** 8px at the default 19px wordmark — the previous `gap-1`. */
+const GAP_STACKED = "gap-[0.42em]";
 
 export function Lockup({
   variant = "horizontal",
@@ -85,7 +127,10 @@ export function Lockup({
     <span
       className={cn(
         "inline-flex select-none",
-        stacked ? "flex-col items-center gap-1" : "flex-row items-center gap-2",
+        ROOT_SIZE,
+        stacked
+          ? `flex-col items-center ${GAP_STACKED}`
+          : `flex-row items-center ${GAP_HORIZONTAL}`,
         MIN[variant],
         className,
       )}
@@ -94,7 +139,7 @@ export function Lockup({
     >
       {/* Clear space equal to the diameter of the centre dot, on all sides.
           The dot is r=9 of a 100 viewBox, so 18% of the reticle's own width. */}
-      <Reticle mono={mono} className="size-4 shrink-0 p-[3%]" />
+      <Reticle mono={mono} className={cn(RETICLE_SIZE, "shrink-0 p-[3%]")} />
 
       <span
         className={cn(
@@ -103,14 +148,19 @@ export function Lockup({
         )}
         aria-hidden={decorative ? undefined : true}
       >
-        {/* WORDMARK — Archivo expanded, tight tracking. Option B interim. */}
-        <span className="u-display-wide text-h3 font-bold leading-none tracking-[-0.02em] uppercase">
+        {/* WORDMARK — Archivo expanded, tight tracking. Option B interim.
+            `1em` rather than the h3 token directly: the root above resolves the
+            token once, so the wordmark and the descriptor share one em base. */}
+        <span className="u-display-wide text-[1em] font-bold leading-none tracking-[-0.02em] uppercase">
           The Armory
         </span>
 
         {/* DESCRIPTOR — squared, wide-tracked small caps. Never omitted.
             Sized relative to the wordmark, with an 8px floor so it cannot fall
-            below legibility even if a caller shrinks the lockup.
+            below legibility even if a caller shrinks the lockup. The `em` now
+            resolves against the lockup root rather than against the inherited
+            body size, so "relative to the wordmark" is finally true — this
+            scales up with the mark, and stops at the floor on the way down.
             Optical alignment: wide tracking adds trailing space after the final
             letter, so the negative right margin re-aligns it to the wordmark. */}
         <span

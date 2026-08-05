@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Section } from "@/components/layout/Section";
-import { Body, Caption, H2, H3, Kicker } from "@/components/ui/Text";
+import { Body, Caption, Data, H2, H3, Kicker } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { Pending } from "@/components/ui/Pending";
 import { StatementBlock } from "@/components/sections/StatementBlock";
+import Link from "next/link";
 import { getMember } from "@/server/auth/session";
+import { leaguesForMember } from "@/server/leagues/repository";
+import { nextFixture, weekdayName } from "@/server/leagues/fixtures";
+import { isDatabaseConfigured } from "@/db/client";
 import {
   canAppearOnClubLadder,
   canCaptainLeague,
@@ -43,6 +47,11 @@ export default async function PortalPage() {
 
   const fullMember = isFullMember(member.status);
 
+  /* Guarded rather than assumed: the portal is reachable only with a session,
+     which needs a database — but a misconfiguration should degrade to an empty
+     list rather than a stack trace on a member's home page. */
+  const summaries = isDatabaseConfigured() ? await leaguesForMember(member.id) : [];
+
   return (
     <>
       <PageHeader
@@ -56,38 +65,96 @@ export default async function PortalPage() {
         }
       />
 
-      {/* ---------------------------------------------- 1. YOUR NEXT ROUND
-          The commitment. First, largest, and the only thing above the fold. */}
+      {/* ------------------------------------------- 1. YOUR LEAGUES & ROUNDS
+          The commitment first. From the Brief: "the engine is not the
+          leaderboard — it is social obligation." A member should learn when
+          they are next expected before they learn where they are ranked. */}
       <Section ground="chalk" rhythm="default">
-        <Kicker className="mb-2">Next round</Kicker>
-        <H2>When you are next expected.</H2>
-        <div className="mt-4">
-          <Pending label="Fixtures — your next round and who else is in it (Workstream 8)" />
-        </div>
-        <Caption className="mt-3 max-w-[68ch]">
-          This is the top of the page on purpose. People come back because they
-          told a friend they would be there, not because of a table.
-        </Caption>
-      </Section>
-
-      {/* ------------------------------------------------- 2. YOUR LEAGUES */}
-      <Section ground="terrazzo" rhythm="default">
         <Kicker className="mb-2">Your leagues</Kicker>
-        <H2>Who you are playing with.</H2>
-        <div className="mt-4">
-          <Pending label="League membership and standings (Workstreams 8-9)" />
-        </div>
 
-        {canCaptainLeague(member.status) ? (
-          <Body muted className="mt-4">
-            As a member you can start a league and captain it. Four people and a
-            standing weekly slot is all it takes.
-          </Body>
+        {summaries.length === 0 ? (
+          <>
+            <H2>Nothing on yet.</H2>
+            <Body muted className="mt-2 max-w-[68ch]">
+              A league is four friends, one round each per week, over six
+              weeks. Shoot yours whenever suits you — the week is the fixture,
+              not the evening. The standings look after themselves.
+            </Body>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {canCaptainLeague(member.status) && (
+                <Button href={routes.leagueNew} variant="primary">
+                  Start a league
+                </Button>
+              )}
+              <Button
+                href={routes.leagueJoin}
+                variant={canCaptainLeague(member.status) ? "secondary" : "primary"}
+              >
+                Join with a code
+              </Button>
+            </div>
+          </>
         ) : (
-          <Body muted className="mt-4">
-            You can join a league that a member has started. Creating and
-            captaining one is a members&rsquo; privilege.
-          </Body>
+          <>
+            <H2>When you are next expected.</H2>
+            <ul className="mt-6 flex flex-col gap-4">
+              {summaries.map(({ league, season, playerCount, roundsPlayed }) => {
+                /* Weeks, never dates. Leagues Spec §8: "Show week numbers,
+                   not dates." A dated table of named members is a record of who
+                   was in the building and when. */
+                const next = nextFixture({
+                  roundsSubmitted: roundsPlayed,
+                  seasonWeeks: season.roundCount,
+                });
+
+                return (
+                  <li
+                    key={league.id}
+                    className="border-t border-[var(--rule)]/30 pt-3"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                      <H3>
+                        <Link
+                          href={routes.league(league.id)}
+                          className="no-underline hover:underline"
+                        >
+                          {league.name}
+                        </Link>
+                      </H3>
+                      <Caption>
+                        {playerCount} {playerCount === 1 ? "player" : "players"}
+                      </Caption>
+                    </div>
+
+                    {next.status === "season-complete" ? (
+                      <Body muted className="mt-1">
+                        Season complete — all {season.roundCount} weeks are in.
+                      </Body>
+                    ) : (
+                      <Body className="mt-1">
+                        <Data muted={false}>{next.fixture.label}</Data>
+                        <span className="text-[var(--ink-muted)]">
+                          {" — still to shoot. Most play "}
+                          {weekdayName(league.anchorWeekday)}.
+                        </span>
+                      </Body>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {canCaptainLeague(member.status) && (
+                <Button href={routes.leagueNew} variant="secondary">
+                  Start another league
+                </Button>
+              )}
+              <Button href={routes.leagueJoin} variant="secondary">
+                Join with a code
+              </Button>
+            </div>
+          </>
         )}
       </Section>
 

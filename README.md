@@ -10,6 +10,11 @@ decision in this codebase:
 | `01_The_Armory_Website_Design_Brief.docx` | Positioning, audiences, phasing, open decisions |
 | `02_The_Armory_Design_Specification.docx` | Sitemap, page specs, flows, tokens, stack, acceptance criteria |
 | `03_The_Armory_Brand_Guidelines.docx` | Identity, palette, typography, art direction, voice |
+| `08_The_Armory_Leagues_Specification.pdf` | Tournament, League and Ladder — Phase 2 product spec |
+
+⚠ **The Leagues Specification is not yet in `docs/`.** It arrived mid-build and
+the codebase has been reconciled against it, but the file itself needs adding to
+the repository so the next person can check the citations.
 
 **One test governs every decision** (Brand Guidelines §11): does this belong in
 a building of terrazzo, warm teak and pale blue soffits — or does it belong in
@@ -520,13 +525,149 @@ the member somewhere else.
 occurrences of `drizzle`, `neon`, `authTokens`, `DATABASE_URL` or any schema
 symbol in any client chunk. Measured LCP after Phase 2: 1016–1064ms, unchanged.
 
+### Workstream 8 — leagues
+
+League creation, join codes, fixtures and the season cap surfaced in the UI.
+198 tests passing.
+
+**Fixtures are derived, never stored.** `rounds` still has no timestamp — the
+rule from Workstream 6 holds. A round's date is computed from two things that
+are already safe: the league's **standing weekly slot**, which is a property of
+the *group*, and the round's sequence number. "This league meets Thursdays at 6"
+is a fixture four friends already agreed between themselves; "Adaeze was at the
+range at 18:04 on 7 August" is an attendance log, and that stays in
+`attendance` where nothing public reads it.
+
+Fixtures advance by **rounds played, not by the calendar**. A league that misses
+a week is behind, not skipped — silently advancing past an unshot round would
+erase exactly the gap the group should notice, and the mechanism is social
+obligation rather than the clock.
+
+**Join codes are read aloud, not copy-pasted.** The realistic path for a fourth
+player is somebody saying "it's ABC-234" over the noise of a firing line. So the
+alphabet is Crockford Base32 — no I, L, O or U — and input *forgives* the
+excluded characters rather than rejecting them: someone who types `O` for zero
+read the code correctly and typed what they saw. Generation uses rejection
+sampling rather than modulo, which is unbiased for a 32-character alphabet but
+silently breaks the moment someone edits it.
+
+**The season cap is a conversion moment, not a rejection.** A non-member hitting
+it has just played a full season and is trying to sign up for another — the
+Brief's whole access model turns on this instant. The form gets out of the way
+and the offer takes the page.
+
+Every privilege is checked in the repository immediately before the write, not
+only in the UI. A server action is a public endpoint; guarding the button
+guards nothing.
+
+### Workstream 9 — reconciliation, and the Tournament
+
+A fourth source document arrived mid-build: **the Leagues Product
+Specification**. It reframes Leagues as *three* products — Tournament, League,
+Ladder — and **contradicted three things already built**. Those were corrected
+before anything new was written.
+
+| What was built | What the spec says | Now |
+| --- | --- | --- |
+| Binding weekly slot, dated fixtures ("Thursday 7 August") | §6: fixtures are **asynchronous** — "the fixture is a week, not an evening". §8: "**Show week numbers, not dates**" | Weeks only. `nextFixture` emits no date, weekday or clock time; a test asserts that |
+| League max 8 players | §6: the unit is **the foursome**; team scoring is "best three of four" | `MAX_LEAGUE_PLAYERS = 4` |
+| Standings next | §1, §9: **build the Tournament first** — it works from opening day and needs no member base | Tournament built; standings follow |
+
+Thursday survives as a **social anchor** rather than a fixture — the night a
+league puts in its group chat, never enforced. §6 gives two reasons and both are
+good: synchronous fixtures are fragile ("one person travels, a child is sick"),
+and forcing every league onto Thursday would create "a capacity crisis on one
+night and empty lanes on Tuesday".
+
+### The variance problem
+
+§3 is the sharpest thing in the document. **Shooting is almost pure skill**, so a
+naive league table "is correct by week two and unchanged by week eight" — and
+"people do not keep showing up to lose predictably". The mechanism meant to
+drive retention would drive churn among exactly the beginners the club needs.
+
+Handicaps are excluded at launch, so five self-explanatory mechanics replace
+them. Two are already implemented as pure, tested functions in
+`src/server/leagues/fixtures.ts`:
+
+- **Attendance streak** — "skill-independent by design; the worst shooter in the
+  club can hold the longest streak." Its signature admits no score at all, which
+  is the guarantee.
+- **The churn signal** — `hasGoneQuiet` / `weeksSinceLastRound`. §9 calls
+  tracking who *stops submitting* "the only early warning you will get".
+  Registered as a gate blocker, because the code is the easy half.
+
+### The tournament engine
+
+`src/server/tournament/engine.ts` — pure, event-sourced, offline-capable.
+
+**Turn-taking is the mechanic** (§2): "everyone watches every shot… the audience
+is where the banter, the pressure and the drama live." Turn order **alternates
+teams** rather than blocking them — block order leaves one team sitting through
+four turns with nothing at stake, which kills the thing the format exists to
+produce.
+
+**The practice round is a constant, not a flag.** §4's hard rule — "never let a
+first-timer shoot a scored round first… must not be dropped when a session runs
+late" — is encoded as `PRACTICE_ROUND_REQUIRED`, because a flag is something a
+range officer can switch off at 9pm, which is precisely the moment the rule
+exists to survive.
+
+**State is derived from an ordered list of turns**, never accumulated. That is
+what delivers §5's "a mis-entered score must be correctable without restarting":
+a correction edits one entry and recomputes, so the screen can never drift out
+of step with the record. A test proves a wrongly-decided sudden-death Decider
+can be corrected back into play.
+
+The engine accepts either input path, so §5's Path A (automatic) versus Path B
+(range officer on a tablet) stays deferred without blocking anything.
+
+### Workstream 10 — the live screen
+
+`/screen`. §5: "the only element of Leagues that genuinely requires software at
+launch… what makes the tournament feel like an event rather than four people
+writing numbers on paper."
+
+**Scoring settled:** best of three rounds — the winner is the team that wins
+most rounds, with the gross total as tiebreak. §1's "gross, live" is what the
+screen shows throughout; §4's "best of three rounds" decides the result.
+
+**The layout was restructured to make this possible.** The root layout used to
+render the header and footer for every route. A television on a wall must carry
+neither — and hiding them with CSS would leave them in the tab order, which
+matters because the range officer's control panel is operated by keyboard. So
+site chrome moved into `app/(site)/layout.tsx` and the root became the document
+shell. URLs are unchanged; `(screen)` sits outside the chrome.
+
+**It runs offline.** State lives in `localStorage`, the engine is pure, and
+nothing calls the network after first load. `useSyncExternalStore` — not an
+effect — reads it, so there is no render-then-correct flash on a screen a room
+is watching, and a reload recovers a tournament mid-event rather than losing it.
+`BroadcastChannel` keeps a display tab and a control tab in step on the machine
+driving the TV.
+
+**Type sizes are derived, not chosen.** §5 requires legibility at 5–10 metres.
+The standard rule is a cap height of roughly viewing-distance / 200 — 5 cm at
+10 m, about 79 px on a 55-inch 1080p television. Team totals are set at 16vw
+(~307 px there), comfortably past it. ⚠ The rule gives a floor, not a verdict:
+§5 says test from the rail and the bar seating with the real screen, and that
+has not happened — it is part of the `live-screen-scope` gate item.
+
+**Red is a point, never a plane.** Ten Ring Red appears on exactly two things:
+the leading team and the last shot. A dead heat highlights neither.
+
+Driven end to end in a real browser at 1920×1080 — set-up, practice round,
+three scored rounds, held winner state. Totals verified against hand
+calculation (A 261 / B 203, three rounds won), no console errors, and the
+tournament survives a mid-event reload.
+
 ### Remaining Phase 2 workstreams
 
-8. **Leagues** — creation, join codes, fixtures, the season cap in the UI.
-9. **Standings** — league tables and the club ladder, display names only.
-10. **The social engine** — "your next round", who else is in, visible absence.
-    The Brief is explicit that this, not the leaderboard, is what drives return
-    visits: "people return because they told a friend they would be there."
+11. **Tournament booking and results page** — a group booking type with format
+    selection, and a results page reachable by link. No accounts.
+12. **League standings** — team and individual tables, personal best, most
+    improved, streak. Week numbers only.
+13. **The Ladder** — members only, gross, rolling window, founding designation.
 
 ---
 

@@ -180,8 +180,11 @@ export const sessions = pgTable(
 export const seasons = pgTable("seasons", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
-  /** How many rounds make a season. Fixes the shape up front. */
-  roundCount: smallint("round_count").notNull(),
+  /**
+   * Rounds in a season. §6: "Season length — six weeks. Capped at six for now."
+   * One round per player per week, so rounds and weeks are the same number.
+   */
+  roundCount: smallint("round_count").notNull().default(6),
   /** Air rifle only in the first version — the discipline that scores itself. */
   disciplineSlug: text("discipline_slug").notNull().default("10m-air-rifle"),
   /** Shots per round and the maximum attainable, for comparability. */
@@ -230,6 +233,27 @@ export const leagues = pgTable(
 
     /** Invitation code. Leagues are private and joined by link, not browsed. */
     joinCode: text("join_code").notNull(),
+
+    /* -----------------------------------------------------------------------
+       THE SOCIAL ANCHOR — advisory, never binding.
+
+       Leagues Specification §6: "Fixtures — Asynchronous. The fixture is a
+       week, not an evening." And: "Thursday is the default night. Most play
+       together; the week accommodates everyone else."
+
+       So this is the night a league INTENDS to play, which is what goes in
+       their group chat. It is not a deadline and the product never enforces
+       it — a round submitted on a Tuesday counts identically. Synchronous
+       fixtures are fragile ("one person travels, a child is sick, and the
+       fixture collapses") and they would concentrate the club's whole league
+       demand onto one evening.
+
+       Deliberately weekday-only, with no time. A time would make it look like
+       an appointment, and would edge back toward the dated schedule §8
+       forbids publishing.
+       -------------------------------------------------------------------- */
+    /** 0 = Sunday … 6 = Saturday. Advisory. */
+    anchorWeekday: smallint("anchor_weekday").notNull().default(4),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
