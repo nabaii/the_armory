@@ -8,6 +8,20 @@
       "when": 1785903146530,
       "tag": "0000_young_the_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786343934911,
+      "tag": "0001_armory_management_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786343957432,
+      "tag": "0002_armory_enforcement",
+      "breakpoints": true
     }
   ]
 }

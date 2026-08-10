@@ -701,3 +701,101 @@ why it passed in Workstream 5 and failed here on identical markup. The scan now
 awaits the subtree's `Animation.finished` rather than sleeping.
 
 Note: median-of-5 makes a full `npm run harden` take roughly 3–4 minutes.
+
+---
+
+# The Armory Management System
+
+A second product in this repository, specified by the **Build Specification**
+(`docs/Armory_Build_Specification.pdf`). The marketing site above is unchanged
+by it; nothing in `src/app/(site)` or the leagues schema was moved.
+
+Section references throughout the code (`§4.2`, `§8.3`) are to that document.
+
+## Where it lives, and why it is separate
+
+| | Leagues product | Management system |
+| --- | --- | --- |
+| Postgres schema | `public` | **`armory`** |
+| Schema file | `src/db/schema.ts` | `src/db/armory/schema.ts` |
+| Client | `src/db/client.ts` (Neon HTTP) | `src/db/armory/client.ts` (pooled TCP) |
+
+**Two table names collide.** Leagues owns `rounds` (a round *sequence* within a
+season, deliberately timestamp-free) and `sessions` (an auth session). The
+specification needs both names for different things — a scored round, and a
+range session. Neither side should be renamed, so the management system takes a
+Postgres schema of its own.
+
+**The driver had to change.** `src/db/client.ts` documents its own trade-off:
+the Neon HTTP driver "means no transactions spanning multiple statements". The
+specification requires multi-statement atomicity for the guest allowance in
+three places — §3.2, §6.2 and §8.3 — and §8.3 names the defect that follows
+without it ("Two devices, one allowance"). The management system therefore uses
+`pg` with a real pool. The hosting decision stays open; only the driver is fixed.
+
+## The shape
+
+```
+src/domain/                 pure, isomorphic, imports nothing from the server
+  enums.ts                  every status vocabulary, defined once
+  capability/               §4 — the capability service
+    index.ts                evaluate(subject, context) → decision
+    reasons.ts              the block catalogue: message, remedy, overridable
+  state-machines.ts         §5 — guarded transitions returning effects as data
+src/lib/
+  uuidv7.ts                 §2 — time-ordered ids, generated before the network
+  money.ts                  §2 — integer kobo, branded; no float path exists
+  time.ts                   §2 — stored UTC, rendered Africa/Lagos
+src/db/armory/
+  schema.ts                 §3 — the data model
+  client.ts                 transaction-capable pool
+drizzle/
+  0001_armory_management_system.sql   generated
+  0002_armory_enforcement.sql         hand-written; see below
+```
+
+**`src/domain/` is not under `src/server/` on purpose.** §4 requires one
+service to decide for both sides, and §8 requires the desk to decide with no
+network at all. `evaluate()` reads nothing and queries nothing — every fact
+arrives as an argument. The server assembles its `Subject` from Postgres, the
+desk assembles the identical `Subject` from the day pack in IndexedDB, and both
+get the same answer including the sentence shown to the member. Nothing in
+`src/domain/` may import the Drizzle schema, or a database driver ends up in a
+tablet bundle inside §2's one-second cold-start budget.
+
+## Enforcement is in the database
+
+§12: append-only tables must "reject update and delete at the **database
+level**, not merely in application code". `drizzle/0002_armory_enforcement.sql`
+installs that, plus the derived columns §3 says must not be writable:
+`firearms.status`, `ammunition_lots.quantity_remaining`, `accounts.balance_kobo`.
+
+```bash
+# Prove it, against any database with the migrations applied
+DATABASE_URL=... npm run db:prove
+```
+
+`scripts/enforcement.test.sql` makes 29 assertions in one rolled-back
+transaction. A TypeScript test cannot demonstrate this requirement, because it
+proves only that the TypeScript did not try.
+
+⚠ **`TRUNCATE` bypasses row-level triggers.** Every append-only table therefore
+carries a second, statement-level guard. Without it the whole guarantee has a
+one-word bypass — and it is invisible until someone finds it.
+
+⚠ **The firearm-status derivation exists twice**, in
+`src/domain/state-machines.ts` and in PL/pgSQL in the enforcement migration —
+once so the desk can show status offline, once so the database maintains the
+column itself. Changing the mapping means changing both, in the same commit.
+
+## Delivered so far — M0 only
+
+Against the §11 plan, **M0 (Foundations)** is complete except for OTP auth and
+device registration, and the §5 state machines from M2 are done early because
+the capability service needed them. The remaining milestones — M1 offline
+spine onward — are not started.
+
+**M1 comes next and the sequencing note in §11 is not optional:** offline is a
+property every later milestone is built into, and attempting it after M5 means
+rewriting M2 through M5. §8.5 defines done for it as a real power cut on a real
+tablet, not devtools offline mode.

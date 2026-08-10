@@ -14,7 +14,18 @@ import type { Config } from "drizzle-kit";
  * command someone ran locally.
  */
 export default {
-  schema: "./src/db/schema.ts",
+  /**
+   * Two schema files, two Postgres schemas.
+   *
+   *   src/db/schema.ts        `public` — the Phase 2 leagues product.
+   *   src/db/armory/schema.ts `armory` — the management system.
+   *
+   * They are separated because both specifications need the table names
+   * `rounds` and `sessions` for different things; see the header of
+   * src/db/armory/schema.ts. Generating them together keeps one migration
+   * history, which is what a restore replays.
+   */
+  schema: ["./src/db/schema.ts", "./src/db/armory/schema.ts"],
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
