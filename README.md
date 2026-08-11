@@ -927,28 +927,70 @@ both visible on the desk, both keeping the payload, because that payload may be
 the only record that a firearm left the rack. `prune()` removes `done` items
 and nothing else.
 
-### ⚠ Two service workers want opposite policies
+### Two service workers, two scopes — resolved
 
-`public/sw.js` is the member's-phone app shell, and its policy is deliberate:
+`/sw.js` is the member's app shell. Its policy is deliberate and unchanged:
 
 > every authenticated or personal surface is network-only … If the member is
 > offline, those routes fail, and failing is correct
 
-That is right for `/portal` on a personal phone — "a phone is shared, lent,
-sold and stolen, and a cached portal page survives sign-out".
+`/console/sw.js` is the desk and lane worker. Its scope is `/console/` — not
+configured anywhere, just the directory it is served from, so no
+`Service-Worker-Allowed` header is involved. Most-specific-scope-wins means a
+tablet at `/console/desk` is controlled by that worker and the member worker
+never sees the request.
 
-It is the **exact opposite** of what §8 requires of the desk and lane, which
-must work "fully offline. Not read-only — fully", holding the entire day pack
-(§8.1): the roster, the firearm register, every expected arrival.
+Both are true at once because they describe different **devices**, not
+different routes. §3.1: desk and lane "load only on a registered, unrevoked
+device". A club tablet in a locked building is not a member's phone on a bus.
 
-These do not conflict, because they are different trust contexts — §3.1 says
-desk and lane "load only on a registered, unrevoked device". The resolution is
-that desk/lane routes get their own caching policy keyed on device
-registration, and §10's revocation wipes local state on next launch
-(`IndexedDbOutboxStore.wipe()` is the outbox half of that).
+**The rejected alternative** was one worker that checks what kind of device it
+is running on. That turns the isolation into a conditional, and a conditional
+is one careless edit away from caching a member's portal page onto their
+handset. Two scopes makes the member policy physically unreachable from the
+console worker: it cannot cache `/portal` because it never sees `/portal`.
 
-**This is not yet built, and `NEVER_CACHE` must not simply be relaxed** to make
-the desk work — that would cache member portal pages on personal phones.
+`/console` was *added* to the member worker's `NEVER_CACHE` — a tightening, not
+a relaxation — covering the window before the console worker installs, and any
+personal phone that follows a console link.
+
+#### Shell in the Cache API, data in IndexedDB
+
+The console worker caches HTML, JS, CSS and icons. It caches **no data** —
+`/api/` and `/sync/` are network-only there too.
+
+That split is the security argument, not tidiness. The Cache API is keyed by
+URL and survives sign-out; data in it cannot be expired by anything that
+understands what the data means. §10 requires a revoked tablet's day pack be
+"rendered unusable on next launch" — clearing an IndexedDB store is one call,
+whereas proving no personal record is left in an opaque HTTP cache means
+knowing every URL that ever returned one.
+
+Cache strategy also inverts: the member worker is network-first, the console
+worker is **cache-first on the shell**. §2 gives the desk a one-second cold
+start with no network, and on a range floor the network is often present but
+useless — a captive portal, a stalled cell. Network-first spends that second
+timing out while a shooter waits.
+
+#### Device trust has a bounded offline grace period
+
+`src/offline/device.ts`. §10 wants revocation to reach a stolen tablet; §8 wants
+the desk to work with no network. A device that trusts its cached registration
+forever works indefinitely in a thief's hands; one that demands a live check
+closes the range during an ordinary power cut.
+
+So a registration is trusted offline for **7 days** since the server last
+confirmed it, with a warning from day 4. Wrong in the safe direction: refusing
+a legitimate device costs one phone call, trusting a stolen one costs every
+member's address.
+
+Stale devices are **refused, not wiped** — they may be legitimate and merely cut
+off, and wiping would destroy an unsynced afternoon of custody events. Only an
+explicit server "revoked" triggers `wipeLocalState()`.
+
+`LOCAL_DATABASES` in `src/offline/revoke.ts` lists every local store, and a test
+asserts its contents — adding a database without adding it there would leave
+data on a revoked device while revocation still reported success.
 
 ### Still outstanding in M1
 

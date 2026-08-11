@@ -49,8 +49,23 @@ const PAGE_CACHE = `armory-pages-${VERSION}`;
    paid for by every member on install. */
 const PRECACHE = ["/offline", "/icons/icon-192.png"];
 
-/** Personal, authenticated, or live. Never written to any cache. */
-const NEVER_CACHE = ["/portal", "/sign-in", "/api/", "/screen"];
+/**
+ * Personal, authenticated, or live. Never written to any cache.
+ *
+ * `/console` is the desk and lane surface, and it is here for a different
+ * reason from the rest. It has its OWN service worker at /console/sw.js, whose
+ * scope is more specific than this one's and therefore wins for every request
+ * under it — so in normal operation this worker never sees a console request
+ * at all.
+ *
+ * It is listed anyway, for the window before that worker installs, and for a
+ * member's phone that follows a console link and is refused by the server. On
+ * a personal handset the console must behave like every other authenticated
+ * surface: network-only, nothing written to disk. The two workers agree about
+ * the member's phone precisely because neither of them is allowed to decide
+ * that question alone.
+ */
+const NEVER_CACHE = ["/portal", "/sign-in", "/api/", "/screen", "/console"];
 
 const isNeverCached = (pathname) =>
   NEVER_CACHE.some((p) => pathname === p || pathname.startsWith(p));
