@@ -895,3 +895,67 @@ spine onward — are not started.
 property every later milestone is built into, and attempting it after M5 means
 rewriting M2 through M5. §8.5 defines done for it as a real power cut on a real
 tablet, not devtools offline mode.
+
+## M1 — the offline spine (in progress)
+
+```
+src/offline/outbox/
+  policy.ts            pure: retry, backoff, quarantine, rejection, desk wording
+  outbox.ts            the durable queue over a storage interface
+  indexeddb-store.ts   the real store — durable, wipeable on device revocation
+  memory-store.ts      tests only; never wire this to a surface
+```
+
+Same shape as `src/domain`: the rules that decide whether a record is retried,
+parked or surfaced are pure functions, testable by calling them. Only the
+storage adapter touches IndexedDB.
+
+**The queued item's id is the record's id.** §7 requires every write to carry a
+client-generated UUIDv7 and be safe to replay. So an outbox item is not a job
+that creates a row — it *is* the row, waiting. A replay is an upsert on a key
+that already exists, which is why this queue can be at-least-once rather than
+attempting exactly-once delivery over a bad link.
+
+**Strict FIFO, with head-of-line blocking.** Queued records reference each
+other — an ammunition issue references its participation. Reordering produces a
+foreign key violation on a valid record. Quarantine is what releases the head;
+that is its main job.
+
+**Nothing is ever silently discarded.** There is no terminal state meaning
+"give up and forget". An item succeeds, or ends in `quarantined` / `rejected` —
+both visible on the desk, both keeping the payload, because that payload may be
+the only record that a firearm left the rack. `prune()` removes `done` items
+and nothing else.
+
+### ⚠ Two service workers want opposite policies
+
+`public/sw.js` is the member's-phone app shell, and its policy is deliberate:
+
+> every authenticated or personal surface is network-only … If the member is
+> offline, those routes fail, and failing is correct
+
+That is right for `/portal` on a personal phone — "a phone is shared, lent,
+sold and stolen, and a cached portal page survives sign-out".
+
+It is the **exact opposite** of what §8 requires of the desk and lane, which
+must work "fully offline. Not read-only — fully", holding the entire day pack
+(§8.1): the roster, the firearm register, every expected arrival.
+
+These do not conflict, because they are different trust contexts — §3.1 says
+desk and lane "load only on a registered, unrevoked device". The resolution is
+that desk/lane routes get their own caching policy keyed on device
+registration, and §10's revocation wipes local state on next launch
+(`IndexedDbOutboxStore.wipe()` is the outbox half of that).
+
+**This is not yet built, and `NEVER_CACHE` must not simply be relaxed** to make
+the desk work — that would cache member portal pages on personal phones.
+
+### Still outstanding in M1
+
+The day pack (§8.1), the sync endpoints (`/sync/daypack`, `/sync/push`,
+`/sync/pull`), the desk's device-aware caching policy, and the sync status UI.
+
+**And §8.5 is not discharged by any of the above.** Its definition of done is a
+real tablet with the power physically pulled mid-session — "Browser devtools
+offline mode does not substitute for it and must not be accepted as evidence."
+The tests here are a precondition for that, not a substitute.
