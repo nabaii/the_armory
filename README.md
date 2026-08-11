@@ -992,10 +992,48 @@ explicit server "revoked" triggers `wipeLocalState()`.
 asserts its contents — adding a database without adding it there would leave
 data on a revoked device while revocation still reported success.
 
+### The day pack (§8.1)
+
+`src/offline/daypack.ts`. The pack is what lets §4's capability service run on
+the desk with no network: `subjectFor(pack, personId)` builds the same
+`Subject` the server builds from Postgres, and both hand it to the same
+`evaluate()`. Not an equivalent decision — the same one, including the sentence
+shown to the member.
+
+`daypack.test.ts` asserts that by comparing whole decision objects from both
+paths. It has already earned its place: it caught the pack's tier leaking an
+`active` flag into the Subject. Nothing read it and every decision still
+matched — which is what made it worth fixing, since a divergence that changes
+no behaviour today is the one that survives long enough to change behaviour
+later.
+
+**§10 is enforced by the shape of the type.** `PackLicence` carries status,
+calibres and expiry — which MAY_USE_OWN_FIREARM needs — and has no
+`documentUrl` field at all, so a pack containing a licence scan does not
+compile. `PackPerson` likewise omits `address`, `dateOfBirth`, `notes` and the
+emergency contact.
+
+The emergency contact is the interesting omission, because it looks necessary.
+It is not needed to *check someone in*; it is needed when there is an incident,
+which is a moment where fetching one record is entirely acceptable and far
+better than holding every member's next of kin on a device in a public
+building.
+
+`assertNoRestrictedFields()` walks an incoming pack at runtime and rejects it
+outright if a forbidden key appears at any depth — because the pack arrives as
+JSON, and TypeScript is not there when it does.
+
+**Status is deliberately not in the pack**, despite §8.1 saying "with computed
+status". A status computed server-side an hour ago is wrong the moment the host
+checks in, and §4 requires that desk row to clear itself without the officer
+retrying. Shipping a precomputed status would make that impossible and would
+duplicate the permission logic §4 forbids duplicating.
+
 ### Still outstanding in M1
 
-The day pack (§8.1), the sync endpoints (`/sync/daypack`, `/sync/push`,
-`/sync/pull`), the desk's device-aware caching policy, and the sync status UI.
+The sync endpoints (`/sync/daypack`, `/sync/push`, `/sync/pull`), the console
+routes themselves, and the sync status UI. The offline data layer — outbox,
+day pack, device trust, revocation — is in place and tested.
 
 **And §8.5 is not discharged by any of the above.** Its definition of done is a
 real tablet with the power physically pulled mid-session — "Browser devtools
