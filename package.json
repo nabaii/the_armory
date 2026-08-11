@@ -15,6 +15,7 @@
     "gate:launch": "tsx scripts/gate.ts --launch",
     "audit": "tsx scripts/audit.ts",
     "responsive": "tsx scripts/responsive.ts",
+    "icons": "tsx scripts/icons.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "harden": "node scripts/harden.mjs",
     "db:generate": "drizzle-kit generate",

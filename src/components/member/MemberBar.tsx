@@ -16,6 +16,29 @@ import type { Member } from "@/db/schema";
  * Founding members are "permanently and visibly distinguished" (Guidelines
  * §10). This is the smallest honest way to do that: a marker where they will
  * see it every time, not a badge shown to everyone else.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS STICKY GLASS, AND WHY FOUNDING STATUS MOVED INTO A CHIP
+ *
+ * It sticks because in an installed app this is the "who am I signed in as"
+ * strip, and a member checking a booking on a range floor should not have to
+ * scroll up to confirm the account. It is glass because it now overlays live
+ * content rather than sitting in flow, which is the only condition under which
+ * glass is worth its cost — over a solid ground it is just tinted paint.
+ *
+ * That forced one change. The bar used to flood ITSELF with VIP Teal for
+ * founding members, and a bar-wide brand colour cannot also be a Chalk-tinted
+ * glass surface: the two are competing for the same pixels, and proving AA for
+ * Chalk type on translucent teal over unpredictable content is a second proof
+ * for a surface this small.
+ *
+ * So the ground is glass for everyone and the distinction moved to an OPAQUE
+ * VIP Teal chip around the name. Nothing is lost — §10 asks for founding
+ * members to be permanently and visibly distinguished, not for the club's
+ * furniture colour to be used at full bleed — and the chip is a stronger
+ * signal than a background tint because it is attached to the name itself.
+ * Chalk on VIP Teal is 5.32:1, and the chip being opaque is what keeps that
+ * true over any backdrop.
  */
 export function MemberBar({ member }: { member: Member }) {
   const founding = isFounding(member.status);
@@ -23,17 +46,28 @@ export function MemberBar({ member }: { member: Member }) {
   return (
     <div
       className={[
-        "border-b border-sight-grey/25",
-        founding ? "bg-vip-teal" : "bg-terrazzo",
-        founding
-          ? "[--ink:var(--color-chalk)] [--ink-muted:var(--color-chalk)]"
-          : "[--ink:var(--color-reticle-black)] [--ink-muted:var(--color-sight-ink)]",
+        /* Directly beneath the header, which is `sticky top-0` plus the status
+           bar inset it carries under `viewport-fit=cover`. */
+        "sticky top-[calc(var(--header-h)+var(--safe-t))] z-40",
+        "u-glass u-glass-edge-bottom",
       ].join(" ")}
     >
       <Container className="flex min-h-6 flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1">
         <p className="u-kicker flex items-center gap-1 text-[var(--ink)]">
-          {founding && <CentreDot className="size-[5px]" />}
-          {member.displayName}
+          {founding ? (
+            <span
+              className={[
+                "inline-flex items-center gap-1 rounded-control px-1 py-[2px]",
+                /* Opaque, so the 5.32:1 holds whatever scrolls underneath. */
+                "bg-vip-teal text-chalk",
+              ].join(" ")}
+            >
+              <CentreDot className="size-[5px]" />
+              {member.displayName}
+            </span>
+          ) : (
+            member.displayName
+          )}
           <span className="ml-1 font-normal normal-case tracking-normal">
             {statusLabel(member.status)}
           </span>

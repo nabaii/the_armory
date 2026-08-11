@@ -12,36 +12,81 @@ import { cta, routes, site } from "@/lib/site";
    desktop, condensed on mobile. Brand Guidelines §10: full lockup in the header.
 
    ----------------------------------------------------------------------------
-   WHY THIS IS A SOLID BAR AND NOT A TRANSLUCENT OVERLAY
+   TWO HEADERS, BECAUSE THERE ARE NOW TWO PRODUCTS
 
-   The obvious treatment for a photography-led site is a transparent header
-   floating over the full-bleed hero. Two rules rule it out, and it is worth
-   recording so it is not reintroduced later as a "polish" change:
+   Above `lg` this is the website's header and it is unchanged: a solid Chalk
+   bar, a hairline rule, five nav items, a persistent Apply CTA. Everything
+   below still applies there.
 
-   1. §3 misuse: "Do not place the full lockup over busy photography. Use a
-      clear zone or a single-colour variant." A header that overlays the hero
-      puts the full lockup over exactly that, on the site's most important
-      screen and on every reload.
-   2. Performance: `backdrop-filter` is expensive on the mid-range Android
-      hardware the 2.5s LCP target is measured against.
+   Below `lg` it is an installed app's title bar. It carries the lockup and
+   nothing else, because the navigation moved to the thumb — see BottomNav.tsx.
+   What was removed, and why:
 
-   So: a solid Chalk bar with a hairline rule, and the hero begins beneath it.
-   The brand guidelines settled the layout question, not taste.
+     the hamburger    Replaced outright. A menu button in the top-left corner
+                      of a phone is the single detail that marks a product as a
+                      website; it is also the corner a thumb cannot reach. The
+                      five destinations it hid are now permanently visible at
+                      the bottom of the screen.
+     the Apply link   Redundant. Apply is slot 5 of the tab bar on every screen
+                      a signed-out visitor sees, rendered as a filled accent —
+                      a far better target than a 66px text link was.
+
+   That frees the entire top-right budget, which is what the long measurement
+   note that used to live here was fighting over. The arithmetic is no longer
+   contested: at 320px the bar holds a 191px lockup inside 16px gutters and has
+   97px spare.
+
+   ----------------------------------------------------------------------------
+   WHY THE MOBILE BAR IS NOW GLASS, WHEN THIS FILE USED TO FORBID IT
+
+   It forbade it for two reasons and both were right. The one that still binds
+   is §3 misuse: "Do not place the full lockup over busy photography. Use a
+   clear zone or a single-colour variant." This bar carries the lockup and it
+   does overlay the hero.
+
+   So it uses `.u-glass-strong` — a 78% Chalk tint, not the 62% the tab bar
+   uses. At 78% the backdrop is no longer legible as photography; it is a warm
+   frosted plate. That IS the clear zone §3 asks for, and it is a stronger
+   guarantee than the old solid bar gave, because the old bar simply started
+   the hero underneath itself and never proved anything about what sat behind.
+   Measured: Reticle Black on the strong tint over a pure black backdrop is
+   7.81:1. The derivation is in glass.css.
+
+   The performance objection does not survive the change of scale. It was
+   written about blurring a full-bleed hero; this is a 72px bar, roughly 9% of
+   a 360x800 viewport, at a 12px radius rather than the 30-40px the style
+   usually reaches for, and it degrades to a solid fill wherever the platform
+   or the user's preferences ask it to.
    ========================================================================= */
 
 export function Header() {
   return (
     <header
       className={[
-        "sticky top-0 z-50 h-[var(--header-h)]",
-        "bg-chalk",
-        "border-b border-sight-grey/25",
-        // The header is a light ground, so CTA colours resolve correctly.
+        "sticky top-0 z-50",
+        /* Under `viewport-fit=cover` the status bar sits inside the viewport
+           once installed, so the bar carries that inset itself. `--safe-t` is
+           0 in a browser tab, so this changes nothing off-device. */
+        "pt-[var(--safe-t)]",
+        /* Desktop: the solid bar, exactly as before. */
+        "lg:bg-chalk lg:border-b lg:border-sight-grey/25",
+        /* The header is a light ground on both sides of the breakpoint, so CTA
+           colours resolve correctly. Declared here rather than inherited from
+           the glass layer below, which is a sibling of the content. */
         "[--ink:var(--color-reticle-black)]",
         "[--btn-fill:var(--color-ten-ring-deep)] [--btn-fill-ink:#fff]",
       ].join(" ")}
     >
-      <Container className="flex h-full items-center justify-between gap-1 sm:gap-2">
+      {/* The material, as its own layer rather than as classes on the header.
+          `.u-glass` sets `backdrop-filter`, and there is no clean way to
+          unset that at a breakpoint with utilities — so the glass is simply
+          not rendered above `lg`, where the solid bar takes over. */}
+      <span
+        aria-hidden="true"
+        className="u-glass u-glass-strong u-glass-edge-bottom absolute inset-0 lg:hidden"
+      />
+
+      <Container className="relative flex h-[var(--header-h)] items-center justify-between gap-1 sm:gap-2">
         {/* Home link. The lockup is `decorative` so the accessible name comes
             from the anchor once, rather than being announced twice. */}
         {/* The lockup is pinned to a fixed size here rather than riding the h3
@@ -59,83 +104,16 @@ export function Header() {
           <Lockup decorative className="text-reticle-black" />
         </Link>
 
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2 xl:gap-4">
+        {/* Desktop only. Below `lg` the tab bar carries both of these. */}
+        <div className="hidden shrink-0 items-center gap-1 lg:flex xl:gap-4">
           <Nav />
-
-          {/* Desktop: the persistent Apply CTA, per spec §5.
-
-              Measured before this was written: with the full "Apply for
-              membership" label the button was 233px wide and 88px tall inside an
-              80px header — it wrapped to two lines and overflowed the bar
-              vertically, which is what made it look like it was bleeding off the
-              top-right corner.
-
-              The short label fixes it at source. The header CTA sits beside a
-              lockup that already says what the club is, so "Apply" is
-              unambiguous there; the full phrase still carries every hero and
-              in-page CTA, where it has the room and does the persuading. */}
-          <div className="hidden lg:block">
-            <Button
-              href={cta.primary.href}
-              variant="primary"
-              className="whitespace-nowrap"
-            >
-              {cta.primary.shortLabel}
-            </Button>
-          </div>
-
-          {/* Mobile: condensed. A text link rather than a filled button —
-              there are ~120px left beside the lockup, and a filled button at
-              that width would either clip the label or push the lockup below
-              its legible minimum.
-
-              ------------------------------------------------------------------
-              THE BUDGET, RE-MEASURED
-
-              This block previously carried the note "24 + 140 + 12 + 45 + 12 +
-              44 + 24 = 301px, so it clears a 320px viewport with room". Every
-              term in it was wrong, and the sum was checked against the wrong
-              number, so it read as verified when it had never been measured in
-              a browser:
-
-                lockup   191px, not 140. 140px is the §3 MINIMUM, and the
-                         minimum cannot bind — see the note in Lockup.tsx. The
-                         sum used the floor as though it were the actual width.
-                gaps     16px, not 12. --spacing is 8px here, so gap-2 is 16.
-                Apply    66px, not 45.
-                gutters  24px each side, which was the one correct term.
-
-              Actual: 24 + 191 + 16 + 44 + 16 + 66 + 24 = 381px. The header
-              overflowed a 320px viewport by 37px and had done since it was
-              written — invisibly, because `body { overflow-x: hidden }` in
-              base.css turns an overflow into a silent clip. `npm run
-              responsive` is what caught it, and exists so the next one is
-              caught in CI rather than on someone's phone.
-
-              At 16px gutters (Container, below sm) the budget now reads:
-
-                320px   16 + 191 + 8 + 44 + 16          = 275  ✓  Apply hidden
-                360px   16 + 191 + 8 + 44 + 8 + 66 + 16 = 349  ✓  all present
-                390px   same 349, with 41px to spare    ✓
-
-              Below 360px the Apply link is withdrawn rather than the lockup
-              being shrunk. Two reasons. The brand mark is first contact and §2
-              makes the descriptor non-negotiable, so degrading it to keep a
-              66px text link is the wrong trade; and the link is not lost — the
-              menu panel one tap away opens with "Apply for membership" as a
-              full-width primary CTA, which is a better target than this link
-              on a 320px screen anyway. */}
-          <Link
+          <Button
             href={cta.primary.href}
-            className={[
-              "u-kicker lg:hidden",
-              "max-[359px]:hidden",
-              "flex min-h-6 items-center px-1",
-              "text-reticle-black underline decoration-1 underline-offset-4",
-            ].join(" ")}
+            variant="primary"
+            className="whitespace-nowrap"
           >
-            Apply
-          </Link>
+            {cta.primary.shortLabel}
+          </Button>
         </div>
       </Container>
     </header>

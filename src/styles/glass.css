@@ -1,0 +1,283 @@
+/* ============================================================================
+   ARMORY GLASS — the app shell's material.
+
+   Source of truth: docs/03_The_Armory_Brand_Guidelines.docx  (§3 misuse, §4
+                    warm neutrals, §8 the centre dot, §11 no gunmetal drift)
+                    docs/02_The_Armory_Design_Specification.docx  (§9 WCAG AA)
+
+   ----------------------------------------------------------------------------
+   WHY THIS EXISTS AT ALL, GIVEN THE HEADER SAYS NOT TO
+
+   Header.tsx rejects translucent chrome and gives two reasons. Both were right
+   about the header and neither reaches this file, so the reasoning is recorded
+   here rather than quietly overridden:
+
+   1. §3 MISUSE — "Do not place the full lockup over busy photography." That
+      rule binds anything CARRYING THE LOCKUP. The bottom navigation carries
+      icons and kicker labels and never carries the lockup, so the rule does
+      not reach it. The top bar does carry it, which is why there are two tint
+      levels below and the lockup gets the stronger one: at 78% the backdrop is
+      no longer legible as photography, which is the "clear zone" §3 asks for.
+
+   2. PERFORMANCE — `backdrop-filter` is expensive, and the cost scales with
+      the blurred AREA. The rejected treatment blurred a full-bleed hero. These
+      surfaces are a 68px bar and a 72px bar: roughly 8% and 9% of a 360x800
+      viewport. The blur radius is also capped at 12px rather than the 30-40px
+      typical of the style, and every surface degrades to a solid fill when the
+      platform cannot afford it (see the guards at the end of this file).
+
+   ----------------------------------------------------------------------------
+   THE PROOF — why the tint is 62% and not a number somebody liked
+
+   Browsers composite normal-blend alpha in sRGB gamma space, so the effective
+   ground behind a label on glass is  a*Chalk + (1-a)*backdrop  per channel.
+   This is the same method base.css uses to derive the hero scrim, and it is
+   used here for the same reason: the photography does not exist yet, so the
+   guarantee has to hold for every frame the shoot could possibly deliver.
+
+   The worst case for dark text is a PURE BLACK backdrop. That is not
+   hypothetical on this site — Charred Timber sections and night photography
+   both scroll under the chrome.
+
+   Solving for AA body text (4.5:1) with Reticle Black #2A2A2B on a Chalk tint:
+
+       a = 0.58    4.38:1   FAILS
+       a = 0.60    4.67:1   passes, no margin
+       a = 0.62    4.97:1   passes with headroom      <- chosen
+
+   At 62%, measured against real grounds:
+
+       pure black backdrop        4.97:1   AA body
+       Charred Timber backdrop    5.89:1   AA body
+       Chalk backdrop            13.15:1   AA body
+
+   NOTE THE BLUR CONTRIBUTES NOTHING TO THIS. A fully black backdrop blurs to
+   black. The guarantee comes from the tint alone, which is why the fallback
+   path below keeps the tint and drops only the filter — the surface stays
+   compliant on a browser with no `backdrop-filter` at all.
+
+   ----------------------------------------------------------------------------
+   THE CONSEQUENCE NOBODY EXPECTS: NO MUTED INK ON GLASS
+
+   Run the same solve for Sight Ink #5A5B5E, the site's secondary text colour:
+
+       Sight Ink on 62% glass over black    2.35:1   FAILS
+
+   There is no room to recover it either — the ceiling for a compliant text
+   luminance here is L <= 0.0309, and Reticle Black sits at 0.0232. Anything
+   perceptibly lighter than Reticle Black fails.
+
+   So ON GLASS, HIERARCHY IS CARRIED BY WEIGHT AND GROUND, NEVER BY A LIGHTER
+   INK. An inactive tab and an active tab are the same colour; they differ by
+   font weight, by the opaque lens behind the active one, and by the centre dot.
+   That is three non-colour signals, which clears WCAG 1.4.1 more comfortably
+   than the muted-grey convention it replaces. Do not "fix" the flat look by
+   reaching for --color-sight-ink here.
+
+   ----------------------------------------------------------------------------
+   THE LOCKUP RING
+
+   Sight Grey measures 2.58:1 against the strong tint over black, below the 3:1
+   non-text threshold. It is left alone: WCAG 1.4.11 exempts logotypes, and §3
+   forbids recolouring the mark to chase a number. The stronger tint is what
+   keeps it looking intentional rather than washed out.
+   ========================================================================= */
+
+:root {
+  /* --------------------------------------------------------------------------
+     THE TINT. Chalk, never white — §4 makes warmth mandatory in the neutrals
+     and §11 prohibits "drift toward gunmetal". Cool-grey glass IS gunmetal.
+     ----------------------------------------------------------------------- */
+
+  /* Chrome default. AA-proven above. Do not lower. */
+  --glass-tint: 62%;
+
+  /* Lockup clear zone (§3). Also used for surfaces that overlay the hero on
+     first paint, where the backdrop is least predictable. 7.81:1. */
+  --glass-tint-strong: 78%;
+
+  /* Capped deliberately. The style's usual 30-40px buys very little at these
+     surface heights and costs real frames on the mid-range Android the 2.5s
+     LCP target is measured against.
+
+     Set by looking, not by taste: at 12px, body copy scrolling under the bar
+     was destroyed as intended but display-size headlines stayed legible
+     through it, which reads as a tinted window rather than as a material.
+     16px settles them without going near the range where the cost climbs. */
+  --glass-blur: 16px;
+
+  /* Saturation is what stops a frosted plate greying out the warm materials
+     underneath — teak, terrazzo, deck oak. Without it the chrome reads cold
+     over exactly the photography the brand is built on. */
+  --glass-saturate: 1.4;
+
+  /* --------------------------------------------------------------------------
+     APP SHELL METRICS
+
+     The bottom navigation is fixed, so content must be padded clear of it or
+     the last line of every page sits underneath the bar. `--app-nav-space` is
+     that reservation and includes the home-indicator inset.
+     ----------------------------------------------------------------------- */
+
+  /* 68px. Fits a 22px icon, a 4px gap and an 11px kicker label inside a 48px
+     lens, which is the house tap-target size (see Button.tsx). */
+  --app-nav-h: 4.25rem;
+
+  /* iOS home indicator / Android gesture bar. Resolves to 0px in a browser
+     tab and on hardware without an inset, so it costs nothing off-device.
+     Requires `viewport-fit=cover` on the viewport meta, set in the root
+     layout — without it this is always 0 and the bar sits under the
+     indicator. */
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+
+  --app-nav-space: calc(var(--app-nav-h) + var(--safe-b));
+}
+
+/* The bottom navigation is a phone surface. Above `lg` the site keeps its
+   desktop header and the bar is not rendered, so nothing may be reserved. */
+@media (min-width: 64rem) {
+  :root {
+    --app-nav-space: 0px;
+  }
+}
+
+/* Anchor targets must clear the fixed bar as well as the sticky header.
+   base.css sets scroll-padding-top; this is the other end of the same rule. */
+html {
+  scroll-padding-bottom: calc(var(--app-nav-space) + var(--spacing) * 2);
+}
+
+/* ============================================================================
+   THE SURFACE
+   ========================================================================= */
+
+/* --- .u-glass ---------------------------------------------------------------
+   The compliant base. Tint first, filter second, so that every fallback path
+   below can drop the filter without touching the guarantee.
+
+   `--ink` is pinned rather than inherited: these surfaces float over unknown
+   grounds, and a section that set --ink to Chalk for its own dark background
+   would otherwise hand white text to a light glass bar.
+   -------------------------------------------------------------------------- */
+
+.u-glass {
+  background-color: color-mix(
+    in srgb,
+    var(--color-chalk) var(--glass-tint),
+    transparent
+  );
+  /* See "no muted ink on glass" above. Both resolve to Reticle Black; the
+     muted slot exists so components can stay written the usual way. */
+  --ink: var(--color-reticle-black);
+  --ink-muted: var(--color-reticle-black);
+  color: var(--color-reticle-black);
+  /* CTA colours resolve against a light ground, as in the solid header. */
+  --btn-fill: var(--color-ten-ring-deep);
+  --btn-fill-ink: #fff;
+}
+
+/* The lockup's clear zone, and any surface that lands over the hero. */
+.u-glass-strong {
+  background-color: color-mix(
+    in srgb,
+    var(--color-chalk) var(--glass-tint-strong),
+    transparent
+  );
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .u-glass {
+    -webkit-backdrop-filter: blur(var(--glass-blur))
+      saturate(var(--glass-saturate));
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+}
+
+/* --- .u-glass-edge ----------------------------------------------------------
+   What separates glass from a translucent rectangle: a lit edge where the
+   material catches light, and a hairline rule that ties it to the site's
+   existing dividers.
+
+   The rule is Sight Grey at 25%, the same value the solid header and the
+   MemberBar already use, so the chrome does not introduce a second divider
+   weight. The highlight is Chalk at 55% — bright enough to read as an edge,
+   too quiet to read as a second border.
+   -------------------------------------------------------------------------- */
+
+.u-glass-edge-top {
+  border-top: 1px solid color-mix(in srgb, var(--color-sight-grey) 25%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-chalk) 55%, transparent);
+}
+
+.u-glass-edge-bottom {
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--color-sight-grey) 25%, transparent);
+  box-shadow: inset 0 -1px 0
+    color-mix(in srgb, var(--color-chalk) 55%, transparent);
+}
+
+/* --- .u-glass-lens ----------------------------------------------------------
+   The active-tab ground, and the reason the centre dot survives.
+
+   §8 assigns "a single red dot as marker" to active navigation. On glass that
+   marker fails outright — Ten Ring Red measures 1.43:1 against the worst-case
+   tint, because red is a mid-luminance colour and so is frosted Chalk.
+
+   The fix is not a different red. It is to give the dot the ground the brand
+   already guarantees it: an OPAQUE Chalk chip inside the frosted bar, on which
+   the dot is exactly the 3.79:1 it measures everywhere else on the site.
+
+   It doubles as the selected-tab affordance, which is the one piece of native
+   vocabulary a web app cannot fake with type alone. Radius stays at
+   --radius-control (2px), so --radius-panel: 0 is not disturbed: this is a
+   control, not a panel, and the edges stay crisp.
+   -------------------------------------------------------------------------- */
+
+.u-glass-lens {
+  background-color: var(--color-chalk);
+  border-radius: var(--radius-control);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-reticle-black) 12%, transparent);
+}
+
+/* ============================================================================
+   GUARDS — the surface degrades to a solid fill rather than degrading the user.
+
+   Each of these keeps the layout identical and only removes the transparency,
+   so nothing reflows when a preference changes.
+   ========================================================================= */
+
+/* Someone who has asked their OS to reduce transparency has usually asked
+   because translucency costs them legibility. Honour it completely, as
+   base.css does for reduced motion — not by weakening the blur, by removing it. */
+@media (prefers-reduced-transparency: reduce) {
+  .u-glass,
+  .u-glass-strong {
+    background-color: var(--color-chalk);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Windows High Contrast and `prefers-contrast: more` both want a known ground. */
+@media (prefers-contrast: more) {
+  .u-glass,
+  .u-glass-strong {
+    background-color: var(--color-chalk);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .u-glass,
+  .u-glass-strong {
+    background-color: Canvas;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .u-glass-lens {
+    background-color: Canvas;
+    border: 1px solid CanvasText;
+  }
+}

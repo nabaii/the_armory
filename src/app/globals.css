@@ -6,8 +6,13 @@
      2. tokens.css  — the @theme block. Generates every utility.
      3. base.css    — element defaults and graphic devices, into layer(base)
                       so that utilities always win over them.
+     4. glass.css   — the app shell's material and metrics. Last, and in the
+                      same layer, because it reads tokens from both files above
+                      and its guards (reduced transparency, forced colours)
+                      must be able to override the surface rules it defines.
    ========================================================================= */
 
 @import "tailwindcss";
 @import "../styles/tokens.css";
 @import "../styles/base.css" layer(base);
+@import "../styles/glass.css" layer(base);

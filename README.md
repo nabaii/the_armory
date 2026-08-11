@@ -34,8 +34,11 @@ npm run verify:full  # the above + build + output audit ← before every deploy
 npm run gate         # WCAG contrast audit + outstanding-content report
 npm run gate:launch  # the above, and fails while any launch blocker remains
 npm run audit        # post-build audit of the prerendered HTML (needs a build)
+npm run responsive   # element geometry at 17 widths — overflow, tap size, clipping
+                     # needs `npm run build && npm run start` in another terminal
 npm run harden       # WCAG 2.1 AA + performance budget + interaction
                      # needs `npm run build && npm run start` in another terminal
+npm run icons        # re-render public/icons/* from the mark (output is committed)
 ```
 
 Two internal reference routes, both `noindex`. Start here:
@@ -192,6 +195,99 @@ contrast and destroy the photography — and §7 says do not degrade hero qualit
 to hit a score. `.u-hero-veil` is a soft overall gradient claiming no guarantee;
 `.u-hero-zone` is the flat guaranteed scrim behind the text only, feathered
 above so it reads as light falling off rather than as a band.
+
+---
+
+## The app shell
+
+Below `lg` this is an installable app, not a website with a menu. Above `lg` it
+is the website, unchanged — same solid header, same five nav items, same
+persistent Apply CTA, and no tab bar.
+
+**Navigation moved to the thumb.** `BottomNav` replaces the hamburger and its
+entire modal apparatus — trigger, dialog, focus trap, Escape handler, scroll
+lock — with five permanently visible destinations. That deletion is the quiet
+win: a modal panel has to be *told* not to leak focus to the page behind it and
+the correctness of that is invisible until it breaks, whereas a bar that is
+always on screen has no open state, no trap and no focus to restore.
+
+The tab set adapts. Signed-out ends on **Apply**, rendered as a filled accent;
+signed-in swaps two labels and two destinations for **Leagues** and **Account**.
+Both sets occupy the same five slots holding the same concepts, so the swap
+moves nothing — no tab slides out from under a thumb already on its way down.
+
+**The signed-in signal is a second cookie, not `getMember()`.** Calling
+`getMember()` in `(site)/layout.tsx` would read `cookies()` in a layout and opt
+every marketing page into dynamic rendering — trading the static prerender the
+1088ms LCP is built on for two swapped tab labels, invisibly. So a non-secret
+`armory_signed_in=1` cookie is written beside the session and read on the
+client through `useSyncExternalStore`. It carries no id, no email and no
+status, is never read on the server, and no authorisation path consults it;
+forging it buys a member-looking tab bar that redirects to sign-in on first
+use. The session token itself stays `httpOnly`. See `src/lib/session-hint.ts`.
+
+### Armory Glass
+
+`Header.tsx` used to forbid translucent chrome and gave two reasons. Both were
+right about the header and neither reaches the tab bar: §3 misuse binds
+anything *carrying the lockup*, and the performance objection was written about
+blurring a full-bleed hero, not a 68px bar at roughly 8% of the viewport.
+
+The tint is derived, not chosen. Effective ground behind a label is
+`a*Chalk + (1-a)*backdrop`; the worst case for dark text is a pure black
+backdrop, which this site genuinely has (Charred Timber, night photography).
+
+| Tint α | Reticle Black over pure black | |
+| --- | --- | --- |
+| 0.58 | 4.38:1 | fails |
+| 0.60 | 4.67:1 | passes, no margin |
+| **0.62** | **4.97:1** | **chosen — chrome default** |
+| 0.78 | 7.81:1 | lockup clear zone (§3), used by the mobile header |
+
+At 0.62 the bar measures 5.89:1 over Charred Timber and 13.15:1 over Chalk.
+**The blur contributes nothing to this** — a black backdrop blurs to black — so
+the guarantee survives every fallback path, including a browser with no
+`backdrop-filter` at all.
+
+Two consequences worth knowing before editing `glass.css`:
+
+- **No muted ink on glass.** Sight Ink measures 2.35:1 there, and the ceiling
+  for a compliant text luminance is `L ≤ 0.0309` against Reticle Black's
+  0.0232 — nothing perceptibly lighter passes. Hierarchy is carried by weight
+  and ground, never by a lighter ink. Inactive and active tab labels are the
+  same colour on purpose.
+- **The centre dot needs an opaque ground.** §8 assigns the red dot to active
+  navigation and it measures 1.43:1 on glass, because red and frosted Chalk are
+  both mid-luminance. Rather than pick a different red, `.u-glass-lens` gives
+  it the ground the brand already guarantees — an opaque Chalk chip inside the
+  frosted bar, where the dot is its usual 3.79:1. The lens doubles as the
+  selected-tab affordance. State is therefore carried by four signals, none of
+  them colour alone: lens, weight, dot, `aria-current`.
+
+Every glass surface degrades to a solid Chalk fill under
+`prefers-reduced-transparency`, `prefers-contrast: more` and `forced-colors`,
+with no layout change.
+
+### Installability
+
+`app/manifest.ts`, `viewport-fit=cover` with `env(safe-area-inset-*)` honoured
+by the tab bar, Apple-specific tags for iOS (which reads neither the manifest
+nor Android's icon rules), and PNG icons committed under `public/icons`.
+
+`public/sw.js` exists first for installability — Chrome will not offer "Install
+app" without a service worker handling `fetch`, however little it caches — and
+second for an honest offline state at `/offline`.
+
+**`/portal`, `/sign-in`, `/api/` and `/screen` are network-only.** Not
+network-first — network-*only*, never written to any cache. `(member)/layout`
+already warns that a cached portal page is one member's data served to another;
+a service worker is a second cache, it lives on the device, and it outlives
+sign-out because clearing a cookie does not clear the Cache API. Phones are
+shared, lent and lost. `/screen` is excluded for a different reason: stale
+scores shown confidently on a wall display are worse than a blank one.
+
+Anything added to the site that carries personal data must be added to
+`NEVER_CACHE`.
 
 ---
 

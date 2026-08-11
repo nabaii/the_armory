@@ -26,7 +26,17 @@ export function Footer() {
         "bg-charred-timber text-chalk",
         "[--ink:var(--color-chalk)] [--ink-muted:var(--color-terrazzo)]",
         "[--rule:var(--color-gabion-stone)]",
-        "pt-12 pb-6",
+        /* The fixed tab bar overlays whatever is at the bottom of the page,
+           and that is always this footer. Reserving the room here rather than
+           on `body` or on every page means no new page can forget to do it,
+           and there is no spacer element sitting between the footer and the
+           bar showing a strip of Chalk under a Charred Timber ground.
+
+           `--app-nav-space` is the bar's height plus the home-indicator inset,
+           and it resolves to 0 above `lg` where the bar is not rendered — so
+           this collapses back to the original 48px on desktop without a
+           breakpoint of its own. */
+        "pt-12 pb-[calc(var(--spacing)*6+var(--app-nav-space))]",
       ].join(" ")}
     >
       <Container>

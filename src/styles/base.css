@@ -20,8 +20,14 @@
 }
 
 html {
-  /* Anchor targets must clear the sticky header. */
-  scroll-padding-top: calc(var(--header-h) + var(--spacing) * 2);
+  /* Anchor targets must clear the sticky header — and, once the shell is
+     installed and running under `viewport-fit=cover`, the status bar inset the
+     header now carries as padding. `--safe-t` is 0 in a browser tab, so this
+     is the same value it always was off-device. The matching bottom rule for
+     the fixed tab bar lives in glass.css. */
+  scroll-padding-top: calc(
+    var(--header-h) + var(--safe-t, 0px) + var(--spacing) * 2
+  );
   -webkit-text-size-adjust: 100%;
 }
 

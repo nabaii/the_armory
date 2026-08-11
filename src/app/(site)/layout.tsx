@@ -1,5 +1,7 @@
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { BottomNav } from "@/components/layout/BottomNav";
+import { ServiceWorker } from "@/components/app/ServiceWorker";
 
 /**
  * SITE CHROME.
@@ -36,6 +38,28 @@ export default function SiteLayout({
         {children}
       </main>
       <Footer />
+      {/*
+        Last in the DOM, and deliberately so. The tab bar is chrome that is
+        always on screen, which makes its tab order position a real decision:
+        placed before `main` it would sit between the skip link and the page
+        content, so every keyboard user would tab through five destinations
+        before reaching the article they came to read.
+
+        Placed last, it is where a screen-reader user expects standing
+        navigation to be and where a keyboard user reaches it after the page —
+        while `position: fixed` keeps it visually first for the thumb. The skip
+        link already covers the case of jumping straight to content.
+
+        It renders below `lg` only, and it is inside this group rather than the
+        root layout for the same reason the header is: `/screen` is a
+        television on a wall and has nobody to navigate.
+      */}
+      <BottomNav />
+      {/* Renders nothing. Registered from this group rather than the root
+          layout so the wall-mounted `/screen` display never asks for it —
+          though the worker's own fetch handler excludes that route too, since
+          scope is site-wide once any page registers it. */}
+      <ServiceWorker />
     </>
   );
 }

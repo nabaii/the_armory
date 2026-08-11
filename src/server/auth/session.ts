@@ -10,6 +10,7 @@ import {
 } from "@/server/auth/repository";
 import { isDatabaseConfigured } from "@/db/client";
 import { routes } from "@/lib/site";
+import { SESSION_HINT_COOKIE } from "@/lib/session-hint";
 
 /**
  * SESSION COOKIE HANDLING.
@@ -39,12 +40,25 @@ const cookieOptions = {
   maxAge: Math.floor(SESSION_TTL_MS / 1000),
 };
 
+/**
+ * Companion flag for the app shell's tab bar, written beside the session and
+ * expiring with it. Readable by script BY DESIGN — that is its only job.
+ *
+ * It carries the literal "1" and nothing else: no id, no email, no status. It
+ * is never read on the server and no authorisation path consults it, so
+ * forging it buys a member-looking tab bar that redirects to sign-in on first
+ * use. The reasoning in full, including why the bar cannot simply call
+ * `getMember()`, is in src/lib/session-hint.ts.
+ */
+const hintOptions = { ...cookieOptions, httpOnly: false };
+
 /** Issue a fresh session and set the cookie. Called only after a redeemed token. */
 export async function startSession(memberId: string): Promise<void> {
   const raw = generateToken();
   await createSession(raw, memberId);
   const jar = await cookies();
   jar.set(COOKIE, raw, cookieOptions);
+  jar.set(SESSION_HINT_COOKIE, "1", hintOptions);
 }
 
 export async function endSession(): Promise<void> {
@@ -56,6 +70,7 @@ export async function endSession(): Promise<void> {
     await deleteSession(raw).catch(() => undefined);
   }
   jar.delete(COOKIE);
+  jar.delete(SESSION_HINT_COOKIE);
 }
 
 /**
