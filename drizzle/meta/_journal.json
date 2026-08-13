@@ -22,6 +22,20 @@
       "when": 1786343957432,
       "tag": "0002_armory_enforcement",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786430400000,
+      "tag": "0003_device_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786690800000,
+      "tag": "0004_staff_sessions",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,24 @@
 import type { Config } from "drizzle-kit";
 
 /**
+ * Load `.env.local` before the credentials below are read.
+ *
+ * Next.js loads that file for `next dev` and `next build`, but drizzle-kit is its own
+ * CLI and does not — so without this, `npm run db:migrate` fails with an empty url
+ * even though the app is configured correctly. This runs at module evaluation, which
+ * is before the object literal at the bottom reads `process.env`.
+ *
+ * `process.loadEnvFile` is Node's own, so this needs no dependency. Wrapped because it
+ * throws when the file is absent, which is the normal case in CI where the variable
+ * arrives from the environment instead.
+ */
+try {
+  process.loadEnvFile(".env.local");
+} catch {
+  /* No .env.local — DATABASE_URL may still be set in the shell. */
+}
+
+/**
  * Drizzle Kit — migration generation for the Phase 2 schema.
  *
  *   npm run db:generate   # schema → SQL migration, no database needed

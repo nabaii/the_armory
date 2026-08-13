@@ -242,8 +242,17 @@ export const memberships = armory.table(
      * sequence, not by MAX()+1 — the latter races, and a reissued member
      * number is a permanent ambiguity in the custody log and in the club's
      * own paper records.
+     *
+     * The default is declared here as well as attached in
+     * drizzle/0002_armory_enforcement.sql, so that inserting a membership does
+     * not have to supply one. Without this the column is required at the type
+     * level, and the only way to satisfy it in application code is the MAX()+1
+     * the sequence exists to prevent — the type system would have quietly
+     * argued for the bug.
      */
-    memberNumber: integer("member_number").notNull(),
+    memberNumber: integer("member_number")
+      .notNull()
+      .default(sql`nextval('armory.member_number_seq')`),
 
     status: membershipStatus("status").notNull().default("pending"),
     isFounding: boolean("is_founding").notNull().default(false),
@@ -505,6 +514,18 @@ export const staffUsers = armory.table(
       .default(sql`ARRAY[]::text[]`),
     active: boolean("active").notNull().default(true),
 
+    /**
+     * PIN throttling. A six-digit PIN is a million guesses, and an attacker
+     * holding the tablet has physical access and unlimited time — so how fast
+     * they may try is the only thing protecting a named officer's identity.
+     *
+     * Persisted rather than held in memory because the desk is a PWA that can
+     * be force-quit between attempts, and an in-process counter resets when the
+     * app is closed. That is not a hypothetical attack; it is the obvious one.
+     */
+    pinFailedCount: integer("pin_failed_count").notNull().default(0),
+    pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
+
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -543,10 +564,117 @@ export const devices = armory.table(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
 
+    /**
+     * The device's bearer credential, HASHED. See
+     * drizzle/0003_device_tokens.sql for the full reasoning.
+     *
+     * Without a secret on this table, `devices` can name a device but not
+     * authenticate one — and GET /sync/daypack returns the roster, the firearm
+     * register and every guest invitation in the window. Knowing a device UUID,
+     * which every pushed record carries, would be enough to fetch all of it.
+     *
+     * SHA-256 with no KDF, deliberately, and the one thing here worth arguing
+     * about. `pinHash` above needs a memory-hard KDF because a four-digit PIN
+     * has almost no entropy. This is 256 bits from a CSPRNG, so there is nothing
+     * to grind — and it is verified on every sync from a range floor, where a
+     * deliberately slow hash is paid for by the officer waiting for the desk.
+     *
+     * No expiry. §10's "short local unlock" protects the SESSION; this
+     * identifies the DEVICE, and a device forced to re-authenticate on a
+     * schedule would stop working during exactly the multi-day outage §8 exists
+     * to survive. Revocation is how a device stops being trusted, and
+     * src/offline/device.ts bounds how long one can go without hearing it.
+     */
+    tokenHash: text("token_hash"),
+    tokenIssuedAt: timestamp("token_issued_at", { withTimezone: true }),
+
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("devices_surface_idx").on(t.surface)],
+  (t) => [
+    index("devices_surface_idx").on(t.surface),
+    /**
+     * Lookup is by hash: the device presents a token, the server hashes it and
+     * finds the row.
+     *
+     * Unique because two devices sharing a credential would make §10's
+     * per-device revocation meaningless and every custody event's attribution a
+     * guess. Partial, so rows predating the token — and any device registered
+     * but not yet issued one — do not collide on NULL.
+     */
+    uniqueIndex("devices_token_hash_key")
+      .on(t.tokenHash)
+      .where(sql`${t.tokenHash} IS NOT NULL`),
+  ],
+);
+
+/**
+ * §10: "No shared logins. Every staff action attributable to a named person.
+ * Device-bound sessions with a short local unlock."
+ *
+ * Both halves of that sentence are columns here. `deviceId` is the binding — a
+ * staff session exists only on a device the founder registered, so a stolen
+ * credential is worth nothing off the tablet it was unlocked on, and revoking
+ * the device ends every session on it. `expiresAt` is the shortness: a shift,
+ * not a fortnight.
+ *
+ * ===========================================================================
+ * WHY A TABLE RATHER THAN A SIGNED TOKEN
+ *
+ * A stateless token cannot be revoked, and revocability is the entire posture
+ * of §10 — the founder must be able to end a session for a tablet left in a
+ * car. A signed token would stay valid until its own expiry no matter what the
+ * founder did, which would make device revocation a promise the system could
+ * not keep during exactly the window that matters.
+ *
+ * The cost is one lookup per authenticated request. The club has a handful of
+ * tablets; this will never be the query that is the problem.
+ *
+ * ===========================================================================
+ * WHAT THIS DOES NOT YET SOLVE
+ *
+ * Unlocking OFFLINE. A tablet with no network cannot reach this table, and §8
+ * requires the desk to work fully offline. The shape that resolves it is in
+ * docs/M1_offline_acceptance.md: the officer signs in once while online, and
+ * the local unlock re-verifies only that one officer's cached verifier for the
+ * length of the shift. This table is the online half and the thing that half
+ * has to agree with. The offline half is M5, with the desk.
+ */
+export const staffSessions = armory.table(
+  "staff_sessions",
+  {
+    id: id(),
+    staffUserId: uuid("staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "cascade" }),
+
+    /**
+     * The device this session is bound to. Cascade, not set null: a session
+     * whose device is gone is not a session, it is a floating credential.
+     */
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+
+    /**
+     * SHA-256 of the session token, hex. The same reasoning as
+     * `devices.tokenHash`: 256 bits from a CSPRNG has nothing to grind, so no
+     * KDF — and a database dump must not hand anyone a working session.
+     */
+    tokenHash: text("token_hash").notNull(),
+
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /** Set when the officer signs out, or when the founder ends it. */
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("staff_sessions_token_hash_key").on(t.tokenHash),
+    index("staff_sessions_staff_idx").on(t.staffUserId),
+    index("staff_sessions_device_idx").on(t.deviceId),
+    index("staff_sessions_expiry_idx").on(t.expiresAt),
+  ],
 );
 
 /* ============================================================================
