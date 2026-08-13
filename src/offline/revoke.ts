@@ -1,3 +1,5 @@
+import { closeLocalDatabases } from "./db";
+
 /**
  * REVOCATION — making a lost tablet useless.
  *
@@ -31,14 +33,28 @@
  * much better than none, and the caller is told what survived.
  */
 
-/** Every IndexedDB database this application creates. Add to this list. */
+/**
+ * Every IndexedDB database this application creates.
+ *
+ * Adding to this list is not a convention anybody has to remember: `LocalDatabaseName`
+ * in src/offline/db.ts is derived from it, and that is the only type
+ * `openLocalDatabase` accepts. A store this list does not name cannot be opened, so
+ * the wipe below cannot fall behind the schema. db.test.ts holds the other half —
+ * that nothing opens a database except through that function.
+ */
 export const LOCAL_DATABASES = [
   /** src/offline/outbox/indexeddb-store.ts */
   "armory-outbox",
   /** The day pack (§8.1). */
   "armory-daypack",
-  /** Device registration (§3.1). */
+  /** Device registration, the clock high-water mark and the device token (§3.1). */
   "armory-device",
+  /**
+   * Today's own work — participations written at the desk (§3.3) and the officer on
+   * shift. The one store holding records that may exist NOWHERE else: a check-in
+   * made during a power cut lives here until the queue drains.
+   */
+  "armory-session",
 ] as const;
 
 /** Cache API namespaces owned by the console shell. */
@@ -75,6 +91,12 @@ function deleteDatabase(name: string): Promise<void> {
 export async function wipeLocalState(): Promise<WipeReport> {
   const cleared: string[] = [];
   const failed: { name: string; error: string }[] = [];
+
+  /* Close this page's connections FIRST. `deleteDatabase` cannot complete while
+     one is open — it fires `blocked` and waits — and the desk is holding all
+     three of these open at the moment revocation runs. Without this the wipe
+     fails on exactly the device it exists for. See src/offline/db.ts. */
+  await closeLocalDatabases();
 
   const record = async (name: string, work: Promise<unknown>) => {
     try {

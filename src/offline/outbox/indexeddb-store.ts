@@ -1,3 +1,4 @@
+import { LazyDatabase, promisify, transact } from "../db";
 import type { OutboxItem, OutboxStore } from "./outbox";
 
 /**
@@ -12,9 +13,9 @@ import type { OutboxItem, OutboxStore } from "./outbox";
  * The obvious move is idb or Dexie. This is deliberately neither, for reasons
  * specific to what this store holds:
  *
- *   · It is about 120 lines. The wrapper libraries are chiefly a promise
- *     adapter over an event API, and that is the part below that is easiest
- *     to get right and easiest to read.
+ *   · It is about 100 lines over the shared helpers in src/offline/db.ts. The
+ *     wrapper libraries are chiefly a promise adapter over an event API, and
+ *     that is the part that is easiest to get right and easiest to read.
  *   · §2 puts a one-second cold-start budget on the desk with no network. The
  *     shell is downloaded on Nigerian mobile data and this is on the critical
  *     path of every launch.
@@ -23,24 +24,12 @@ import type { OutboxItem, OutboxStore } from "./outbox";
  *     upgrade and error handling of that store is worth reading in full
  *     rather than inheriting.
  *
- * ===========================================================================
- * DURABILITY IS NOT AUTOMATIC
- *
- * Two things below are easy to omit and both cost data:
- *
- *   · `durability: "strict"` on the write transaction. Chromium defaults
- *     IndexedDB writes to "relaxed", which lets the browser acknowledge a
- *     transaction before the OS has flushed it. On a mains-powered laptop that
- *     distinction is theoretical. In a building where §1.1 says "power and
- *     internet are unreliable", it is precisely the failure §8.5 tests for by
- *     pulling the plug mid-session.
- *
- *   · Persistent storage. Without it the browser may evict the whole origin's
- *     storage under pressure, taking the queue with it and asking nobody. The
- *     desk requests persistence on boot; see `requestPersistence()`.
+ * The connection, the durability setting and the promise adapter live in
+ * src/offline/db.ts, which is the only module allowed to call `indexedDB.open`.
+ * That is what keeps §10's wipe list from falling behind the schema — see the
+ * header there.
  */
 
-const DB_NAME = "armory-outbox";
 const DB_VERSION = 1;
 const ITEMS = "items";
 const META = "meta";
@@ -65,64 +54,24 @@ const fromStored = (row: StoredItem): OutboxItem => ({
   nextAttemptAt: row.nextAttemptAt ? new Date(row.nextAttemptAt) : null,
 });
 
-function promisify<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
 export class IndexedDbOutboxStore implements OutboxStore {
-  private db: Promise<IDBDatabase> | null = null;
+  private readonly db = new LazyDatabase("armory-outbox", DB_VERSION, (db) => {
+    if (!db.objectStoreNames.contains(ITEMS)) {
+      /* Keyed by the record's own UUIDv7. Because v7 sorts by creation time, a
+         plain key cursor walks the queue in delivery order with no secondary
+         index to maintain. */
+      db.createObjectStore(ITEMS, { keyPath: "id" });
+    }
+    if (!db.objectStoreNames.contains(META)) {
+      db.createObjectStore(META);
+    }
+  });
 
-  private open(): Promise<IDBDatabase> {
-    if (this.db) return this.db;
-
-    this.db = new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(ITEMS)) {
-          /* Keyed by the record's own UUIDv7. Because v7 sorts by creation
-             time, a plain key cursor walks the queue in delivery order with
-             no secondary index to maintain. */
-          db.createObjectStore(ITEMS, { keyPath: "id" });
-        }
-        if (!db.objectStoreNames.contains(META)) {
-          db.createObjectStore(META);
-        }
-      };
-
-      request.onsuccess = () => {
-        const db = request.result;
-        /* A second tab running a newer version needs this one to let go, or
-           its upgrade blocks forever and that tab silently stops syncing. */
-        db.onversionchange = () => db.close();
-        resolve(db);
-      };
-
-      request.onerror = () => reject(request.error);
-      request.onblocked = () =>
-        reject(new Error("The outbox is open in another tab and cannot upgrade."));
-    });
-
-    return this.db;
-  }
-
-  private async tx(
+  private tx(
     storeName: string,
     mode: IDBTransactionMode,
   ): Promise<IDBObjectStore> {
-    const db = await this.open();
-    /* See the durability note in the header. Older engines ignore the option
-       rather than throwing, so no feature test is needed. */
-    const transaction = db.transaction(
-      storeName,
-      mode,
-      mode === "readwrite" ? { durability: "strict" } : undefined,
-    );
-    return transaction.objectStore(storeName);
+    return this.db.store(storeName, mode);
   }
 
   async put(item: OutboxItem): Promise<void> {
@@ -171,34 +120,11 @@ export class IndexedDbOutboxStore implements OutboxStore {
    * server-side reconciliation in §8.3 exists.
    */
   async wipe(): Promise<void> {
-    const db = await this.open();
-    const transaction = db.transaction([ITEMS, META], "readwrite", {
-      durability: "strict",
-    });
+    const db = await this.db.open();
+    const transaction = transact(db, [ITEMS, META], "readwrite");
     await Promise.all([
       promisify(transaction.objectStore(ITEMS).clear()),
       promisify(transaction.objectStore(META).clear()),
     ]);
   }
-}
-
-/**
- * Ask the browser not to evict this origin's storage.
- *
- * Without this, IndexedDB is "best effort": under storage pressure the browser
- * may clear the whole origin, which on this device means the day pack and the
- * outbox. Chrome grants persistence to installed PWAs without a prompt, which
- * is one of the practical reasons §2 asks for an installable application
- * rather than a bookmark.
- *
- * Returns whether the storage is now persistent. The desk should show a
- * warning if it is not, because on that device the offline guarantee §8 makes
- * is not one the browser has agreed to.
- */
-export async function requestPersistence(): Promise<boolean> {
-  if (typeof navigator === "undefined" || !navigator.storage?.persist) {
-    return false;
-  }
-  if (await navigator.storage.persisted()) return true;
-  return navigator.storage.persist();
 }

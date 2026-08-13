@@ -50,6 +50,26 @@ import type { DeviceSurface } from "@/domain/enums";
  * The clock is `lastVerifiedAt` — the last time the SERVER confirmed this
  * device — not `registeredAt`. A device that checks in daily never approaches
  * the bound.
+ *
+ * ===========================================================================
+ * THE BOUND IS MEASURED AGAINST A CLOCK THE THIEF CONTROLS
+ *
+ * Everything above depends on elapsed time, and the only clock available with
+ * no network is the tablet's own — which is a setting, on a device that by
+ * assumption is in someone else's hands. Measuring staleness against
+ * `new Date()` alone means the seven-day bound is defeated by opening the
+ * settings app and moving the date backwards, and the whole module reduces to
+ * the indefinite trust it was written to avoid.
+ *
+ * So the device keeps a HIGH-WATER MARK: the furthest-forward wall-clock time
+ * it has ever seen, persisted locally and advanced on every launch. Staleness is
+ * measured against whichever is later, the current clock or that mark.
+ *
+ * It is not a real monotonic clock and does not pretend to be. What it
+ * guarantees is narrower and sufficient: time cannot be made to run BACKWARDS
+ * across a restart. A thief who winds the date back gets no more grace than was
+ * left at the moment the device was last legitimately used, because the mark
+ * written by that launch is still on disk and still counts.
  */
 
 export type DeviceRegistration = {
@@ -69,6 +89,36 @@ export type DeviceRegistration = {
 export type ServerVerdict =
   | { reachable: true; revoked: boolean }
   | { reachable: false };
+
+/**
+ * The device's own sense of time, and how far it can be trusted.
+ *
+ * A pair rather than a bare `Date` because on this surface the current time is
+ * untrusted input, and a function that takes `now: Date` invites every caller to
+ * pass `new Date()` and forget that it is a setting. See the high-water note in
+ * the header.
+ */
+export type DeviceClock = {
+  /** What the device believes the time is. */
+  now: Date;
+  /**
+   * The furthest-forward time this device has ever observed. Persisted locally,
+   * advanced on every launch. Null only on the very first launch after install.
+   */
+  highWaterAt: Date | null;
+};
+
+/**
+ * The later of the current clock and the high-water mark.
+ *
+ * This is the only time value the staleness bound is allowed to see.
+ */
+export function effectiveNow(clock: DeviceClock): Date {
+  if (!clock.highWaterAt) return clock.now;
+  return clock.highWaterAt.getTime() > clock.now.getTime()
+    ? clock.highWaterAt
+    : clock.now;
+}
 
 export type TrustDecision =
   /** Open the console. */
@@ -103,7 +153,7 @@ const DAY_MS = 86_400_000;
 export function evaluateDeviceTrust(
   registration: DeviceRegistration | null,
   verdict: ServerVerdict,
-  now: Date,
+  clock: DeviceClock,
 ): TrustDecision {
   if (!registration) {
     return {
@@ -125,15 +175,34 @@ export function evaluateDeviceTrust(
     return { action: "allow", staleDays: 0, warning: null };
   }
 
-  /* Server unreachable: fall back to how long ago it last confirmed. */
+  /* Server unreachable: fall back to how long ago it last confirmed — measured
+     against the high-water mark, not the raw clock. See the header. */
   const staleDays = Math.floor(
-    (now.getTime() - registration.lastVerifiedAt.getTime()) / DAY_MS,
+    (effectiveNow(clock).getTime() - registration.lastVerifiedAt.getTime()) /
+      DAY_MS,
   );
 
-  /* A clock that has gone backwards — a tablet whose battery died and came
-     back with a bad time. Treat it as fresh rather than locking the desk out
-     over a wrong clock; the next successful sync corrects it. */
-  if (staleDays < 0) return { action: "allow", staleDays: 0, warning: null };
+  /**
+   * Time still appears to run backwards even after the high-water mark: the
+   * device was last verified later than anything it has ever seen.
+   *
+   * The legitimate cause is a tablet whose battery died and came back with a
+   * bad date, on its first launch afterwards, before any mark existed. Locking
+   * the desk over that would be a self-inflicted outage — §1.1's failure.
+   *
+   * So it is allowed, but not silently. An officer who is told the clock is
+   * wrong can fix it in a minute; a desk that quietly grants itself unlimited
+   * grace on a wrong clock is the §10 hole this module exists to close.
+   */
+  if (staleDays < 0) {
+    return {
+      action: "allow",
+      staleDays: 0,
+      warning:
+        "This device's clock is wrong. Connect it to the internet so it can " +
+        "correct itself.",
+    };
+  }
 
   if (staleDays >= OFFLINE_GRACE_DAYS) {
     return {

@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 import {
   OFFLINE_GRACE_DAYS,
   OFFLINE_WARNING_DAYS,
+  effectiveNow,
   evaluateDeviceTrust,
   isDayPackUsable,
+  type DeviceClock,
   type DeviceRegistration,
 } from "./device";
 import { LOCAL_DATABASES } from "./revoke";
@@ -32,12 +34,22 @@ const registration = (lastVerifiedDaysAgo: number): DeviceRegistration => ({
   lastVerifiedAt: daysBefore(lastVerifiedDaysAgo),
 });
 
+/**
+ * A device whose clock is correct and which has been running normally, so its
+ * high-water mark agrees with the current time. The default for every test that
+ * is not specifically about the clock.
+ */
+const clock = (now: Date, highWaterAt: Date | null = now): DeviceClock => ({
+  now,
+  highWaterAt,
+});
+
 describe("device trust", () => {
   it("allows a registered device the server confirms", () => {
     const decision = evaluateDeviceTrust(
       registration(0),
       { reachable: true, revoked: false },
-      NOW,
+      clock(NOW),
     );
     assert.equal(decision.action, "allow");
   });
@@ -46,13 +58,13 @@ describe("device trust", () => {
     const decision = evaluateDeviceTrust(
       registration(0),
       { reachable: true, revoked: true },
-      NOW,
+      clock(NOW),
     );
     assert.equal(decision.action, "wipe");
   });
 
   it("refuses an unregistered device rather than wiping it", () => {
-    const decision = evaluateDeviceTrust(null, { reachable: false }, NOW);
+    const decision = evaluateDeviceTrust(null, { reachable: false }, clock(NOW));
     assert.equal(decision.action, "refuse");
   });
 
@@ -61,7 +73,7 @@ describe("device trust", () => {
       const decision = evaluateDeviceTrust(
         registration(days),
         { reachable: false },
-        NOW,
+        clock(NOW),
       );
       assert.equal(
         decision.action,
@@ -75,7 +87,7 @@ describe("device trust", () => {
     const decision = evaluateDeviceTrust(
       registration(OFFLINE_GRACE_DAYS),
       { reachable: false },
-      NOW,
+      clock(NOW),
     );
     assert.equal(decision.action, "refuse");
   });
@@ -87,7 +99,7 @@ describe("device trust", () => {
     const decision = evaluateDeviceTrust(
       registration(OFFLINE_GRACE_DAYS + 30),
       { reachable: false },
-      NOW,
+      clock(NOW),
     );
     assert.equal(decision.action, "refuse");
     assert.notEqual(decision.action, "wipe");
@@ -97,14 +109,14 @@ describe("device trust", () => {
     const quiet = evaluateDeviceTrust(
       registration(OFFLINE_WARNING_DAYS - 1),
       { reachable: false },
-      NOW,
+      clock(NOW),
     );
     assert.equal(quiet.action === "allow" && quiet.warning, null);
 
     const warned = evaluateDeviceTrust(
       registration(OFFLINE_WARNING_DAYS),
       { reachable: false },
-      NOW,
+      clock(NOW),
     );
     assert.equal(warned.action, "allow");
     assert.ok(
@@ -113,30 +125,26 @@ describe("device trust", () => {
     );
   });
 
-  it("survives a tablet whose clock came back wrong", () => {
-    /* Battery died, restored with a date in the past. Locking the desk over a
-       bad clock would be a self-inflicted outage. */
-    const future = registration(-5);
-    const decision = evaluateDeviceTrust(future, { reachable: false }, NOW);
-    assert.equal(decision.action, "allow");
-  });
-
   it("a reachable server always beats a stale local clock", () => {
     /* Even far past the grace period, a server that says "not revoked" is the
        authority — the bound exists only because the server is silent. */
     const decision = evaluateDeviceTrust(
       registration(OFFLINE_GRACE_DAYS + 90),
       { reachable: true, revoked: false },
-      NOW,
+      clock(NOW),
     );
     assert.equal(decision.action, "allow");
   });
 
   it("every refusal and warning is written for a person", () => {
     const cases = [
-      evaluateDeviceTrust(null, { reachable: false }, NOW),
-      evaluateDeviceTrust(registration(99), { reachable: false }, NOW),
-      evaluateDeviceTrust(registration(0), { reachable: true, revoked: true }, NOW),
+      evaluateDeviceTrust(null, { reachable: false }, clock(NOW)),
+      evaluateDeviceTrust(registration(99), { reachable: false }, clock(NOW)),
+      evaluateDeviceTrust(
+        registration(0),
+        { reachable: true, revoked: true },
+        clock(NOW),
+      ),
     ];
 
     for (const decision of cases) {
@@ -155,11 +163,86 @@ describe("device trust", () => {
     const decision = evaluateDeviceTrust(
       registration(99),
       { reachable: false },
-      NOW,
+      clock(NOW),
     );
     assert.equal(decision.action, "refuse");
     if (decision.action !== "refuse") return;
     assert.match(decision.remedy, /connect/i);
+  });
+});
+
+/* ===========================================================================
+   THE CLOCK — §10 against a device in someone else's hands
+
+   The seven-day bound is measured in elapsed time, and the only clock available
+   offline is a setting on the tablet. These are the tests that the bound cannot
+   be moved by changing it.
+   ======================================================================== */
+
+describe("the offline bound survives the device's own clock", () => {
+  it("winding the date back does not buy a stolen tablet more grace", () => {
+    /* The attack, in full: a device last verified nine days ago is refused. Its
+       holder sets the date back a fortnight, which makes `now` earlier than
+       `lastVerifiedAt` and, measured naively, makes the device look freshly
+       confirmed. The high-water mark written by its last legitimate launch is
+       still on disk and still counts. */
+    const stale = registration(9);
+    const windBackTo = new Date(NOW.getTime() - 14 * 86_400_000);
+
+    const naive = evaluateDeviceTrust(stale, { reachable: false }, {
+      now: windBackTo,
+      highWaterAt: null,
+    });
+    assert.equal(
+      naive.action,
+      "allow",
+      "sanity: with no mark, a rolled-back clock does read as fresh",
+    );
+
+    const defended = evaluateDeviceTrust(stale, { reachable: false }, {
+      now: windBackTo,
+      highWaterAt: NOW,
+    });
+    assert.equal(
+      defended.action,
+      "refuse",
+      "a rolled-back clock must not reopen a device the bound has closed",
+    );
+  });
+
+  it("a device inside its grace period is unaffected by the mark", () => {
+    const decision = evaluateDeviceTrust(
+      registration(2),
+      { reachable: false },
+      clock(NOW),
+    );
+    assert.equal(decision.action, "allow");
+    assert.equal(decision.action === "allow" && decision.staleDays, 2);
+  });
+
+  it("the mark only ever moves time forward, never back", () => {
+    const behind = new Date(NOW.getTime() - 5 * 86_400_000);
+    const ahead = new Date(NOW.getTime() + 5 * 86_400_000);
+
+    assert.equal(effectiveNow({ now: NOW, highWaterAt: behind }).getTime(), NOW.getTime());
+    assert.equal(effectiveNow({ now: NOW, highWaterAt: ahead }).getTime(), ahead.getTime());
+    assert.equal(effectiveNow({ now: NOW, highWaterAt: null }).getTime(), NOW.getTime());
+  });
+
+  it("says so plainly when the clock is wrong rather than failing silently", () => {
+    /* Battery died, restored with a date in the past, first launch afterwards so
+       there is no mark yet. The desk opens — locking it over a bad clock would
+       be a self-inflicted outage — but the officer is told. */
+    const decision = evaluateDeviceTrust(
+      registration(-5),
+      { reachable: false },
+      { now: NOW, highWaterAt: null },
+    );
+    assert.equal(decision.action, "allow");
+    assert.ok(
+      decision.action === "allow" && /clock is wrong/.test(decision.warning ?? ""),
+      "an unreliable clock must be visible, not silently trusted",
+    );
   });
 });
 
@@ -201,16 +284,17 @@ describe("day pack staleness", () => {
 
 /* ===========================================================================
    THE WIPE LIST — §10
+
+   Completeness of the list is enforced in db.test.ts, which checks that every
+   database is opened through the typed opener and therefore cannot exist without
+   being named here.
    ======================================================================== */
 
 describe("revocation", () => {
-  it("names every local database, so a new one cannot be forgotten", () => {
-    /* This assertion is a tripwire. Adding a fourth IndexedDB database
-       without adding it to LOCAL_DATABASES means revocation silently leaves
-       it on the device — and revocation would still report success. */
+  it("names the day pack, the device record, the outbox and today's work", () => {
     assert.deepEqual(
       [...LOCAL_DATABASES].sort(),
-      ["armory-daypack", "armory-device", "armory-outbox"],
+      ["armory-daypack", "armory-device", "armory-outbox", "armory-session"],
       "a local store was added or renamed without updating the wipe list",
     );
   });

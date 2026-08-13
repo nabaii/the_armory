@@ -293,7 +293,17 @@ export function hydrate(pack: DayPack): IndexedDayPack {
    THE BRIDGE TO §4
    -------------------------------------------------------------------------- */
 
-const toDate = (value: string | null): Date | null =>
+/**
+ * The one string-to-Date conversion in the system.
+ *
+ * Exported, and imported by the server's Subject builder rather than
+ * reimplemented there. Parity between the desk and the server (see
+ * `subjectFor`) is asserted by a test, but it is only STRUCTURAL if both sides
+ * turn `"2027-06-01"` into an instant by the same rule — two independent
+ * one-liners agreeing today is a coincidence, and `new Date("2027-06-01")` and
+ * `new Date("2027-06-01T00:00:00")` are not the same moment.
+ */
+export const toDate = (value: string | null): Date | null =>
   value === null ? null : new Date(value);
 
 /**
