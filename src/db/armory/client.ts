@@ -123,6 +123,24 @@ export type ArmoryDb = ReturnType<typeof connect>;
  */
 export type ArmoryTx = Parameters<Parameters<ArmoryDb["transaction"]>[0]>[0];
 
+/**
+ * Either a connection or a transaction — for functions that only READ.
+ *
+ * The distinction `ArmoryTx` draws is about writes: §3.2 and §8.3 require the
+ * allowance and the invitation to move together, and a signature demanding a
+ * transaction is what makes that a compile-time fact.
+ *
+ * A read carries no such obligation. `invitationForToken` resolving a guest link
+ * (§6.3) is one SELECT on a page with nothing to make atomic, and forcing it
+ * into a transaction would open one per page view for no benefit — and would
+ * blunt the signal, because once every function takes an `ArmoryTx` the type
+ * stops telling anyone anything.
+ *
+ * So: writes take `ArmoryTx`, reads take `ArmoryReader`, and the union means a
+ * read composes freely inside a write's transaction.
+ */
+export type ArmoryReader = ArmoryDb | ArmoryTx;
+
 export { armorySchema as schema };
 
 /** For tests and for graceful shutdown. */

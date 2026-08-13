@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
-import type { ArmoryTx } from "@/db/armory/client";
+import type { ArmoryReader, ArmoryTx } from "@/db/armory/client";
 import { schema } from "@/db/armory/client";
 import { uuidv7 } from "@/lib/uuidv7";
 import { applied, refused, type Written } from "./record";
@@ -182,7 +182,7 @@ async function countCurrentSignatories(
  * admitting them under terms nobody has drafted yet.
  */
 export async function activeWaiverVersion(
-  tx: ArmoryTx,
+  tx: ArmoryReader,
 ): Promise<{ id: string; version: string } | null> {
   const [row] = await tx
     .select({

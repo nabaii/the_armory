@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
-import type { ArmoryTx } from "@/db/armory/client";
+import type { ArmoryReader, ArmoryTx } from "@/db/armory/client";
 import { schema } from "@/db/armory/client";
 import type { InvitationStatus } from "@/domain/enums";
 import {
@@ -345,7 +345,7 @@ export type InvitationForGuest = {
  * only one of them.
  */
 export async function invitationForToken(
-  tx: ArmoryTx,
+  tx: ArmoryReader,
   token: string,
 ): Promise<InvitationForGuest | null> {
   const [row] = await tx

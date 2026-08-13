@@ -1,5 +1,5 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
-import type { ArmoryTx } from "@/db/armory/client";
+import type { ArmoryReader, ArmoryTx } from "@/db/armory/client";
 import { schema } from "@/db/armory/client";
 import type { BookingStatus } from "@/domain/enums";
 import { bookingTransition, type BookingEvent } from "@/domain/state-machines";
@@ -409,7 +409,7 @@ async function positionsTakenInSlot(
  * double-booked on a Saturday.
  */
 export async function bookedSlotsFrom(
-  tx: ArmoryTx,
+  tx: ArmoryReader,
   input: { readonly from: Date; readonly discipline: string },
 ): Promise<
   { slotStart: Date; slotEnd: Date; discipline: string; positions: number }[]
