@@ -96,6 +96,36 @@ export const members = pgTable(
 
     /** Soft delete for NDPA erasure — see anonymiseMember(). */
     anonymisedAt: timestamp("anonymised_at", { withTimezone: true }),
+
+    /**
+     * The same human in the management system — `armory.people.id`.
+     *
+     * ONE SIGN-IN, TWO SYSTEMS OF RECORD.
+     *
+     * These two products identify people differently and both are right to.
+     * Leagues signs in by email, because a ladder needs a display name and no
+     * phone number. The management system keys on phone, and
+     * src/db/armory/schema.ts says why: "The club's primary channel is WhatsApp
+     * (§9) and OTP is sent by SMS, so the phone number is the account
+     * identifier — email is optional and secondary, which is the reverse of the
+     * leagues product."
+     *
+     * Build Specification §7 sketches a separate armoury identity group
+     * (`/auth/otp/request`, `/auth/otp/verify`) while calling its resource list
+     * "indicative, not a contract. Shape it as the team prefers." Two sign-ins
+     * for one club is a worse product than one, so the portal session stays the
+     * single front door and this column is what it resolves to.
+     *
+     * Deliberately nullable, and deliberately not a Drizzle-level reference:
+     *
+     *   · Nullable, because a leagues account can exist before admission —
+     *     §3.1 makes applicant, guest and member states of a person, and a
+     *     visitor who signed in to look at a ladder is none of them yet.
+     *   · No `.references()`, because importing the armoury schema here would
+     *     couple two files that are separate on purpose. The foreign key is
+     *     declared in drizzle/0005 where cross-schema constraints belong.
+     */
+    personId: uuid("person_id"),
   },
   (t) => [
     uniqueIndex("members_email_key").on(t.email),
