@@ -20,7 +20,8 @@
     "harden": "node scripts/harden.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:prove": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f scripts/enforcement.test.sql",
+    "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
+    "db:prove": "node --env-file-if-exists=.env.local --import tsx scripts/prove.ts",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run gate",
     "verify:full": "npm run verify && npm run build && npm run audit"
   },

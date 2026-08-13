@@ -115,6 +115,44 @@ if (launchMode) {
   }
 }
 
+/* ----------------------------------------------------- THE OFFLINE ACCEPTANCE
+   Build Specification §8.5 and the §12 items that need hardware.
+
+   Printed always, not only in launch mode, and that is deliberate. §11 requires
+   this to be discharged BEFORE M2 begins — "if it cannot be, the schedule is
+   wrong and it is better to know in week five than in month four" — so it has
+   to be visible on an ordinary `npm run gate` rather than only in the check
+   nobody runs until launch week.
+
+   It cannot be automated by construction. §8.5: "Browser devtools offline mode
+   does not substitute for it and must not be accepted as evidence." A test that
+   a CI runner could pass would be the substitution the specification forbids,
+   so the honest thing a script can do is refuse to let it be forgotten.
+
+   Protocol and recording sheet: docs/M1_offline_acceptance.md
+   -------------------------------------------------------------------------- */
+
+console.log(
+  `\n${bold("Offline acceptance")} ${dim("(§8.5 — hardware only, cannot be automated)")}`,
+);
+console.log(
+  dim(
+    "  Required before M2 (§11). Devtools offline mode is not evidence.\n" +
+      "  Protocol: docs/M1_offline_acceptance.md\n",
+  ),
+);
+for (const check of [
+  "Cold start with no network reaches a usable desk screen in under one second, on the tablet model being purchased.",
+  "A guest blocked for host absence clears by itself when the host checks in, with no reload.",
+  "Power physically pulled mid-session: every record is present on reopening.",
+  "On reconnection, every record reaches the server exactly once.",
+  "A record deliberately delivered twice produces one row, on the live database.",
+  "A revoked tablet is wiped on next launch, and cannot open its cached shell offline.",
+  "A device past the offline bound stays refused after its clock is wound backwards.",
+]) {
+  console.log(`  ${dim("[ ]")}  ${check}`);
+}
+
 console.log(
   failed
     ? `\n${red(bold("Gate failed."))}\n`
