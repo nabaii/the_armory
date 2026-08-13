@@ -103,6 +103,18 @@ export const LIMITS = {
   groupEnquiry: { limit: 8, windowMs: 10 * 60_000 },
   waitlist: { limit: 6, windowMs: 10 * 60_000 },
   booking: { limit: 12, windowMs: 10 * 60_000 },
+
+  /**
+   * §10: "Rate limiting — on OTP request and on the guest token endpoint."
+   *
+   * Generous, because §6.3 describes the caller as someone in poor signal
+   * opening the link once in a car park — and poor signal means retries. A tight
+   * limit here would lock out the genuine guest long before it inconvenienced
+   * anyone testing a stolen list, since the token is 256 bits and guessing was
+   * never the threat. What this bounds is an unauthenticated endpoint being used
+   * to hammer the database from anywhere with a URL.
+   */
+  guestToken: { limit: 30, windowMs: 10 * 60_000 },
 } as const;
 
 /** Exposed for tests. */
