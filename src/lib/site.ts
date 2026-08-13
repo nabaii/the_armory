@@ -102,6 +102,8 @@ export const routes = {
   signInVerify: "/sign-in/verify",
   /** The member home. Spec §1 calls Phase 2 "member accounts and portal". */
   portal: "/portal",
+  /** §6.2 "Book a session" and "Invite a guest", which are one intention. */
+  portalBook: "/portal/book",
   leagueNew: "/portal/leagues/new",
   leagueJoin: "/portal/leagues/join",
   /** A specific league. Private — the repository scopes reads by membership. */
