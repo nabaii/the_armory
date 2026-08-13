@@ -44,6 +44,28 @@ const VERSION = "v1";
 const SHELL_CACHE = `armory-shell-${VERSION}`;
 const PAGE_CACHE = `armory-pages-${VERSION}`;
 
+/**
+ * Cache names this worker owns, and nothing else.
+ *
+ * The Cache API is scoped to the ORIGIN, not to the service worker. So
+ * `caches.keys()` here also returns the console worker's caches
+ * (`armory-console-shell-*`), and on a club tablet both workers are registered
+ * at once — this one for `/`, the console's for `/console/`.
+ *
+ * That makes the cleanup below dangerous if it is written as "delete everything
+ * that is not mine". It was, and the consequence was specific: bumping VERSION
+ * in this file wiped the desk's precached shell, so the next cold start with no
+ * network reached the 503 instead of the Today screen — §2 and §8 broken by a
+ * deploy to the member site, on a device the member site never runs on.
+ *
+ * Scoping deletion to this worker's own prefixes is the fix. The console worker
+ * already does the same in the other direction. Two workers sharing one origin
+ * only stay isolated if BOTH of them clean up narrowly.
+ */
+const OWNED_PREFIXES = ["armory-shell-", "armory-pages-"];
+
+const isOwnCache = (name) => OWNED_PREFIXES.some((p) => name.startsWith(p));
+
 /* The minimum needed to render something honest with no network. Kept small on
    purpose: this is downloaded on Nigerian mobile data, and a fat precache is
    paid for by every member on install. */
@@ -97,7 +119,8 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((k) => k !== SHELL_CACHE && k !== PAGE_CACHE)
+            /* Own caches only, and only superseded ones. See OWNED_PREFIXES. */
+            .filter((k) => isOwnCache(k) && k !== SHELL_CACHE && k !== PAGE_CACHE)
             .map((k) => caches.delete(k)),
         ),
       )
