@@ -97,6 +97,7 @@ function pack(): DayPack {
     arrivals: [memberArrival, guestArrival],
     firearms: [],
     ammunitionLots: [],
+    lanes: [],
     staff: [],
     devices: [],
   };

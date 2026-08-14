@@ -2,6 +2,7 @@ import {
   evaluate,
   type Decision,
   type InvitationSnapshot,
+  type WaiverSignatureSnapshot,
 } from "@/domain/capability";
 import { formatTime } from "@/lib/time";
 import { arrivalsFor, subjectFor, type IndexedDayPack, type PackArrival } from "./daypack";
@@ -58,7 +59,30 @@ export type ArrivalRow = {
   overridable: boolean;
   /** True once this person is on the premises. */
   checkedIn: boolean;
+  /**
+   * Whether what stands in this row's way is a signature the desk can take.
+   *
+   * Decided here rather than in the component, because deciding it means reading
+   * a reason code and §4 is explicit that "no screen makes its own permission
+   * decision". The component renders a button; this says whether there is one.
+   *
+   * False for a member blocked by something else even if their waiver is also
+   * unsigned — §4.3 resolves a row to its single most fundamental reason, and
+   * signing would not admit somebody whose membership has lapsed. The offer is
+   * made only when taking it actually clears the row.
+   */
+  needsWaiver: boolean;
 };
+
+/**
+ * The three blocks a signature at the desk resolves. §3.1, and reasons.ts.
+ *
+ * None of them is overridable — the waiver is the club's legal position if
+ * someone is hurt on a live range — so for a row in one of these states this is
+ * the ONLY way forward. Before src/offline/waiver.ts existed there was none, and
+ * the check-in button on such a row is disabled by §4.3.
+ */
+const SIGNABLE = new Set(["WAIVER_MISSING", "WAIVER_SUPERSEDED", "WAIVER_EXPIRED"]);
 
 /**
  * Map a decision onto the indicator.
@@ -112,9 +136,10 @@ function rowFor(
   arrival: PackArrival,
   now: Date,
   checkedIn: ReadonlySet<string>,
+  locallySigned: ReadonlyMap<string, WaiverSignatureSnapshot>,
 ): ArrivalRow {
   const pack = indexed.pack;
-  const subject = subjectFor(indexed, arrival.personId);
+  const subject = subjectFor(indexed, arrival.personId, locallySigned);
   const person = indexed.personById.get(arrival.personId);
 
   const waiver = {
@@ -142,6 +167,7 @@ function rowFor(
       line: "This booking refers to someone this device does not have on file.",
       overridable: false,
       checkedIn: false,
+      needsWaiver: false,
     };
   }
 
@@ -189,6 +215,7 @@ function rowFor(
     line: decision.allowed ? "" : decision.reason.message,
     overridable: decision.allowed ? false : decision.overridable,
     checkedIn: checkedIn.has(arrival.personId),
+    needsWaiver: !decision.allowed && SIGNABLE.has(decision.reason.code),
   };
 }
 
@@ -198,15 +225,23 @@ function rowFor(
  * `checkedIn` is the set of people already on the premises — from local
  * participations, including ones still in the outbox, because a check-in written
  * during a power cut has happened whether or not the server knows.
+ *
+ * `locallySigned` is the same idea for §3.1's waiver: signatures taken at this
+ * desk, which the pack cannot know about because it was pulled before they
+ * happened. A waiver block clears the moment it is signed for exactly the reason
+ * a guest's block clears when their host arrives — everything the row depends on
+ * is an argument, so re-evaluating is the whole mechanism. Defaulted empty so a
+ * caller with nothing local to say reads as it did before.
  */
 export function todayRows(
   indexed: IndexedDayPack,
   dateKey: string,
   now: Date,
   checkedIn: ReadonlySet<string>,
+  locallySigned: ReadonlyMap<string, WaiverSignatureSnapshot> = new Map(),
 ): ArrivalRow[] {
   return arrivalsFor(indexed, dateKey).map((arrival) =>
-    rowFor(indexed, arrival, now, checkedIn),
+    rowFor(indexed, arrival, now, checkedIn, locallySigned),
   );
 }
 

@@ -100,12 +100,24 @@ skipped, not omitted.
 ### 2 — The workflow, entirely offline
 
 5. Check in the **member**. Confirm the row moves to checked-in.
+
+   The seed plants members whose waiver is missing or superseded (every ninth).
+   If the member you pick is one of them, their row offers **Sign waiver** in
+   place of Check in — do step 9 first and come back. That is the intended
+   order, not a fault.
 6. Confirm the **guest** row is blocked, and that the reason **names the host**.
 7. Check in the **host**, and confirm the guest's row clears **by itself** —
    §12.1: "no retry needed". Do not reload the page. If a reload was required, the
    test has failed even though the screen now looks correct.
 8. Check in the guest.
-9. Sign the **waiver** for one of them.
+9. Sign the **waiver** for one of them. Pick somebody the seed left on a
+   superseded version, so the signature has a block to clear.
+
+   Confirm the waiver **text** is on screen before the signing area — a tablet
+   that cannot show the document refuses to take a mark against it. Sign with a
+   finger. Confirm the row clears **by itself**, exactly as the guest's did at
+   step 7: no reload. The row then offers Check in, where it offered nothing
+   before.
 10. Issue the **serialised firearm** against the participation.
 11. Issue **forty rounds** from the lot.
 12. Record **two scores**.
@@ -124,8 +136,10 @@ skipped, not omitted.
 
 17. **Every record from steps 5–12 is present.** Check each one individually
     against the list, not by glancing at a count.
-18. The session is still open, with the same participations, the same firearm
-    issued and the same two scores.
+18. The session is still open, with the same participations, the same waiver
+    signature, the same firearm issued and the same two scores. Confirm the
+    signed row is still clear on Today — read from `armory-session`, not from the
+    server, which has not been asked yet.
 19. The sync bar shows the same depth as before the cut, or one more if a write
     landed during step 14.
 20. Nothing reads as an error, and no record has silently vanished.
@@ -179,7 +193,9 @@ The replay path is unit-tested over every operation
 | --- | --- | --- | --- |
 | 3 | Cold start to usable Today | \_\_\_ ms | budget 1000 ms |
 | 7 | Guest cleared without a reload | pass / fail | §12.1 |
-| 17 | Records present after the cut | \_\_ / \_\_ | count what steps 5–8 produced |
+| 9 | Waiver cleared the block without a reload | pass / fail | §3.1 |
+| 9 | Signature image held on the tablet | held / lost | see the note below |
+| 17 | Records present after the cut | \_\_ / \_\_ | count what steps 5–11 produced |
 | 17 | Presence survived the reboot | pass / fail | read from `armory-session` |
 | 22 | Queue drained in | \_\_\_ s | |
 | 23 | Rows on the server | exactly once / duplicated | §7 |
@@ -197,40 +213,106 @@ Signed: \_\_\_\_\_\_\_\_\_\_\_\_\_\_ Date: \_\_\_\_\_\_\_\_ Tablet model: \_\_\_
 Recorded here so they are not discovered as surprises mid-test, and so nobody
 records a pass against a step the build does not yet support.
 
-- **Steps 5–8 are built. Steps 9–12 are not.**
+- **Steps 5–11 are built. Step 12 is not.**
 
   Check-in is complete and durable: it writes a participation to `armory-session`
   and queues `participations.checkin` plus an `audit_log.create` through the outbox
   (`src/offline/checkin.ts`). Presence is read back off the disk at boot, so the
-  power cut at step 14 is a real test of steps 5–8 and of step 17 for those records.
+  power cut at step 14 is a real test of those records and of step 17.
 
-  The **waiver, equipment-issue and score-capture** workflows are M5 and M7. Their
-  writes are defined and replay-tested (`src/sync/operations.ts`) and the queue that
-  carries them is complete, but there is no screen that originates them — so steps
-  9–12 cannot be performed yet.
+  **Updated at M5.** Equipment issue now has an originating layer —
+  `src/offline/equipment.ts` builds the `custody_events.create` and
+  `ammunition_issues.create` writes that §6.4 requires to work offline, so steps
+  10 and 11 can be performed. **Score capture (step 12) remains M7**; its write is
+  defined and replay-tested but nothing originates it.
 
-  What **can** be run today, and should be before M2 begins per §11: sections 1 and
-  2 as far as step 8, the power cut at step 14, step 17 for the check-in records,
-  section 5 in full, section 6, and sections 7 and 8 in full.
+  **Corrected.** The M5 edit above moved this heading from "steps 5–8" to "steps
+  5–11" on the strength of the equipment work alone, which quietly claimed **step
+  9** as well. It was not built: nothing anywhere originated a
+  `waiver_signatures.create`. It is built now — see the next entry — and the
+  heading is true as it stands.
 
-- **Check-ins are attributed to a device, not to a person.** §10 requires "every
-  staff action attributable to a named person", and `checked_in_by_staff_id` is
-  written as null because M1 has no officer sign-in. The column is nullable, the
-  device is always recorded, and the audit row is still written — but a check-in
-  made during this run names a tablet and honestly not a human.
+  What **can** be run today: sections 1 and 2 as far as step 11, the power cut at
+  step 14, step 17, section 5 in full, section 6, and sections 7 and 8 in full.
+  Step 12 is recorded as skipped, not omitted.
 
-  Not papered over with a dropdown of officers, which would be the shared login §10
-  forbids under another name. The real fix is the device-bound session with a short
-  local unlock (§10), which needs to work **offline** — so it cannot verify a PIN
-  against the server, and the day pack deliberately does not carry
-  `staff_users.pin_hash` (a pack holding every officer's PIN hash moves staff
-  authentication onto a stealable tablet). The shape that resolves it: the officer
-  signs in once while online, and the local unlock re-verifies only that one
-  officer's stored verifier for the length of the shift. M5, with the desk.
+- **~~The waiver cannot be signed at the desk.~~ Closed.**
 
-- **No lane is assigned at check-in.** §6.4 says "three taps maximum from Today to
-  checked in **with a lane assigned**"; `lane_id` is written as null. Lane
-  assignment needs the lane list and occupancy, which is M5/M7.
+  §6.4 puts the waiver on the desk and §3.1 makes a signature append-only. The
+  write was defined in `src/sync/contract.ts`, parsed in `src/sync/operations.ts`
+  and replay-tested from the beginning; nothing built one.
+
+  It was not a cosmetic gap. `WAIVER_MISSING` and `WAIVER_SUPERSEDED` are
+  **not overridable** (`src/domain/capability/reasons.ts`) and their stated remedy
+  is "at the desk" — so a member in either state met a block the desk could not
+  clear and an officer could not waive, and `scripts/seed.ts` plants both
+  deliberately. The Today row disabled its own check-in button and offered
+  nothing else. It was the only dead end on the screen.
+
+  `src/offline/waiver.ts` builds the signature and its audit row;
+  `src/components/console/WaiverSheet.tsx` shows the document and takes the mark;
+  the signature is written to `armory-session` before it is queued, in the same
+  order and for the same reason as a check-in. The block clears from local state
+  alone, by the same mechanism as §12.1's host rule — `subjectFor` takes desk
+  signatures as an argument, so the row re-evaluates rather than refetching.
+
+  **The signature image, decided rather than deferred.** `waiver_signatures` is
+  append-only and drizzle/0002 rejects UPDATE, so whatever `signature_image_url`
+  holds at insert is what it holds forever — a null written offline could never
+  be filled in later, and those signatures are exactly the ones most likely to be
+  contested. So the key is derived from the signature's own UUIDv7 at the moment
+  of signing and travels in the row, and the bytes stay on the tablet in
+  `armory-session` until there is somewhere to send them. This is the pattern
+  `src/server/armory/licences.ts` already uses from the other side: a
+  client-chosen id that the row and the object both agree on.
+
+  **What this leaves open, stated plainly:** there is no uploader, and no object
+  storage is configured in this repository at all. Between signing and upload the
+  key names an object that does not exist. The bytes are durable on the device
+  throughout — that is what the second step-9 line on the recording sheet checks,
+  and it is checked *after* the power cut, because the image is the one artefact
+  here that exists in a single copy.
+
+  **What to check on this run:** that the waiver text appears before the signing
+  area; that the row clears with no reload; that the signature is still there
+  after the reboot at step 16; and at step 23, that `armory.waiver_signatures`
+  holds exactly one row for it, carrying a `signature_image_url` and a
+  `device_id`.
+
+- **~~Check-ins are attributed to a device, not to a person.~~ Closed at M5.**
+
+  §10 requires "every staff action attributable to a named person".
+  `checked_in_by_staff_id` was written as null throughout M1 because there was no
+  officer sign-in, so a check-in named a tablet and honestly not a human.
+
+  The two halves now exist. Online: `POST /api/auth/staff/unlock`
+  (`src/server/armory/staff-session.ts`) exchanges a registered device plus a PIN
+  for a session — two factors, neither sufficient alone, which is what §10's
+  "device-bound sessions with a short local unlock" describes. Offline:
+  `src/offline/officer.ts` derives a verifier **in the browser** from the PIN at
+  the moment of a successful online unlock and keeps it for the shift, so the day
+  pack still carries no `staff_users.pin_hash` and a stolen tablet exposes at most
+  the last officer to sign in on it.
+
+  Three wrong PINs offline and the tablet requires a connection. The shift expires
+  after twelve hours and only an online unlock creates another.
+
+  **What to check on this run:** that a check-in performed after an offline unlock
+  carries a `checked_in_by_staff_id`, and that one performed with no live shift
+  still carries null rather than a stale name.
+
+- **~~No lane is assigned at check-in.~~ Closed at M5.**
+
+  §6.4 says "three taps maximum from Today to checked in **with a lane assigned**".
+  The day pack now carries lanes (`PackLane`, projected in
+  `src/server/daypack-projection.ts`) and `src/offline/lanes.ts` computes occupancy
+  from local participations — including ones still in the outbox, for the same
+  reason the host-presence rule reads local state.
+
+  The officer is offered the lowest-numbered free lane as a default they can
+  change; the desk never assigns silently. **What to check:** that a check-in
+  writes a non-null `lane_id`, and that a lane under maintenance is shown and
+  refused rather than hidden.
 
 - **Incidents cannot be recorded offline yet.** §6.5 requires it. An incident is two
   tables and the HTTP driver has no multi-statement transactions, so writing it

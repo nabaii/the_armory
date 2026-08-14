@@ -12,6 +12,7 @@ import type {
   QualificationSnapshot,
   Subject,
   TierPermissions,
+  WaiverSignatureSnapshot,
 } from "@/domain/capability";
 
 /**
@@ -122,6 +123,29 @@ export type PackInvitation = {
   isChargeable: boolean;
 };
 
+/**
+ * Somebody the club has already checked in — §6.5's relay.
+ *
+ * The server's view of who is on the premises, which a LANE tablet has no other
+ * way to learn: check-in happens at the desk, on a different device. See
+ * `ParticipationRow` in src/server/rows.ts for the reasoning and for the limit —
+ * with no uplink between the two tablets, this is as fresh as the last pull.
+ *
+ * The desk merges these with its own local participations and its own copy
+ * wins, because the desk's copy is the one that includes the check-in it
+ * recorded thirty seconds ago and has not yet sent.
+ */
+export type PackParticipation = {
+  id: string;
+  sessionId: string;
+  personId: string;
+  role: ParticipantRole;
+  hostPersonId: string | null;
+  laneId: string | null;
+  checkedInAt: string;
+  checkedOutAt: string | null;
+};
+
 export type PackFirearm = {
   id: string;
   serialNumber: string;
@@ -138,6 +162,22 @@ export type PackAmmunitionLot = {
   id: string;
   calibre: string;
   quantityRemaining: number;
+};
+
+/**
+ * §6.4: "three taps maximum from Today to checked in WITH A LANE ASSIGNED."
+ *
+ * Carried in the pack because the assignment happens at the desk, offline, and
+ * a lane the device has never heard of cannot be assigned. Status travels too:
+ * a bay under maintenance must not be offered, and the desk is the one place
+ * where nobody can walk over and look.
+ */
+export type PackLane = {
+  id: string;
+  discipline: string;
+  number: number;
+  status: "available" | "maintenance" | "closed";
+  positionCapacity: number;
 };
 
 export type PackStaff = {
@@ -205,6 +245,18 @@ export type DayPack = {
 
   /** §3.1: exactly one active version. A signature against any other is stale. */
   activeWaiverVersionId: string;
+  /**
+   * That version's label and text.
+   *
+   * Carried because §6.4 takes a signature at the desk with no network, and a
+   * document cannot be signed without being shown. Nullable so a pack stored
+   * before this field existed still hydrates — the same reason `lanes` is
+   * defaulted below, and the same rule: a device holding yesterday's pack keeps
+   * working (§8.1). `buildWaiverSignature` refuses when they are absent rather
+   * than taking a mark against text the officer could not display.
+   */
+  activeWaiverVersion?: string | null;
+  activeWaiverBody?: string | null;
   /** Null until counsel settles it (§14). Fails open — see WaiverContext. */
   waiverValidityDays: number | null;
 
@@ -222,8 +274,17 @@ export type DayPack = {
   allowances: readonly PackAllowance[];
   invitations: readonly PackInvitation[];
   arrivals: readonly PackArrival[];
+  /**
+   * Who the club has already checked in. §6.5.
+   *
+   * Optional so a pack stored before this field existed still hydrates — the
+   * same reason `lanes` is defaulted, and the same rule: a device holding
+   * yesterday's pack keeps working (§8.1).
+   */
+  participations?: readonly PackParticipation[];
   firearms: readonly PackFirearm[];
   ammunitionLots: readonly PackAmmunitionLot[];
+  lanes: readonly PackLane[];
   staff: readonly PackStaff[];
   devices: readonly PackDevice[];
 };
@@ -253,6 +314,7 @@ export type IndexedDayPack = {
   invitationById: Map<string, PackInvitation>;
   firearmBySerial: Map<string, PackFirearm>;
   firearmById: Map<string, PackFirearm>;
+  lanesByDiscipline: Map<string, PackLane[]>;
 };
 
 const groupBy = <T>(rows: readonly T[], key: (row: T) => string) => {
@@ -286,6 +348,10 @@ export function hydrate(pack: DayPack): IndexedDayPack {
     invitationById: index(pack.invitations, (i) => i.id),
     firearmBySerial: index(pack.firearms, (f) => f.serialNumber),
     firearmById: index(pack.firearms, (f) => f.id),
+    /* Defaulted, so a pack produced before M5 added lanes still hydrates. A
+       device holding yesterday's pack must keep working — §8.1 gives it a day
+       to run alone, and a missing field is not a reason to refuse the morning. */
+    lanesByDiscipline: groupBy(pack.lanes ?? [], (lane) => lane.discipline),
   };
 }
 
@@ -307,6 +373,27 @@ export const toDate = (value: string | null): Date | null =>
   value === null ? null : new Date(value);
 
 /**
+ * The later of two signatures for the same person — the pack's and the desk's.
+ *
+ * Compared on `signedAt` rather than preferring the local copy outright, because
+ * both directions occur. A member signs at the desk and the local copy is the
+ * newer one; a member signs in the portal while the tablet is offline and the
+ * next pack refresh brings the newer one. Taking the later is the only rule that
+ * is right in both, and it is what `Subject.waiver` already promises: "most
+ * recent signature, whatever version it was against".
+ */
+const mostRecentSignature = (
+  fromPack: WaiverSignatureSnapshot | null,
+  fromDesk: WaiverSignatureSnapshot | null,
+): WaiverSignatureSnapshot | null => {
+  if (!fromPack) return fromDesk;
+  if (!fromDesk) return fromPack;
+  return fromDesk.signedAt.getTime() >= fromPack.signedAt.getTime()
+    ? fromDesk
+    : fromPack;
+};
+
+/**
  * Build a capability `Subject` from the pack.
  *
  * THE FUNCTION THIS WHOLE FILE EXISTS FOR.
@@ -320,10 +407,24 @@ export const toDate = (value: string | null): Date | null =>
  * Returns a Subject with `membership: null` for someone the pack knows only as
  * a guest, which is precisely how §3.1 models a guest: a state of a person,
  * not another kind of record.
+ *
+ * ===========================================================================
+ * `locallySigned` — THE SAME ARGUMENT AS `checkedIn`
+ *
+ * A waiver signed at the desk two minutes ago is not in the pack; the pack came
+ * from the server before it happened. Passing local signatures in is what makes
+ * a waiver block clear the moment it is signed, with no network and no reload —
+ * the identical shape as the host-presence rule (§12.1: "no retry needed"),
+ * where `todayRows` takes the checked-in set as an argument rather than
+ * refetching, and for the identical reason.
+ *
+ * Optional, so every caller that has no local signatures to offer — the server's
+ * parity test among them — reads exactly as it did before.
  */
 export function subjectFor(
   indexed: IndexedDayPack,
   personId: string,
+  locallySigned?: ReadonlyMap<string, WaiverSignatureSnapshot>,
 ): Subject | null {
   if (!indexed.personById.has(personId)) return null;
 
@@ -369,7 +470,17 @@ export function subjectFor(
     expiresAt: toDate(q.expiresAt),
   }));
 
-  const signature = indexed.waiverByPersonId.get(personId);
+  const packSignature = indexed.waiverByPersonId.get(personId);
+
+  const signature = mostRecentSignature(
+    packSignature
+      ? {
+          waiverVersionId: packSignature.waiverVersionId,
+          signedAt: new Date(packSignature.signedAt),
+        }
+      : null,
+    locallySigned?.get(personId) ?? null,
+  );
 
   return {
     personId,
@@ -389,12 +500,7 @@ export function subjectFor(
             renewsOn: toDate(membership.renewsOn),
           }
         : null,
-    waiver: signature
-      ? {
-          waiverVersionId: signature.waiverVersionId,
-          signedAt: new Date(signature.signedAt),
-        }
-      : null,
+    waiver: signature,
     licences,
     qualifications,
   };

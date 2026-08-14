@@ -55,6 +55,8 @@ export function projectDayPack(source: DayPackSource): DayPack {
     windowEnd: source.windowEnd,
 
     activeWaiverVersionId: source.activeWaiverVersionId,
+    activeWaiverVersion: source.activeWaiverVersion,
+    activeWaiverBody: source.activeWaiverBody,
     waiverValidityDays: source.waiverValidityDays,
     storageEnabled: source.storageEnabled,
     disciplinesRequiringQualification: source.disciplinesRequiringQualification,
@@ -161,6 +163,29 @@ export function projectDayPack(source: DayPackSource): DayPack {
       invitationId: arrival.invitationId,
     })),
 
+    /**
+     * Who is already on the premises — §6.5's relay.
+     *
+     * The one part of the pack that describes what has HAPPENED rather than
+     * what is expected or what is on file, and it is here for a device that
+     * cannot know it any other way: a lane tablet does not take check-ins.
+     *
+     * Nothing else is carried across. `tier_snapshot` is on the row server-side
+     * (§3.3) and stays there — the lane has no decision that reads it, and a
+     * tier snapshot is a copy of a person's commercial standing that has no
+     * reason to be on a tablet clamped to a post outside.
+     */
+    participations: source.participations.map((participation) => ({
+      id: participation.id,
+      sessionId: participation.sessionId,
+      personId: participation.personId,
+      role: participation.role,
+      hostPersonId: participation.hostPersonId,
+      laneId: participation.laneId,
+      checkedInAt: participation.checkedInAt,
+      checkedOutAt: participation.checkedOutAt,
+    })),
+
     /* The full register (§8.1), minus the licence link and the acquisition
        history. `status` is derived from custody_events server-side (§3.4) and the
        desk treats it as read-only. */
@@ -179,6 +204,17 @@ export function projectDayPack(source: DayPackSource): DayPack {
       id: lot.id,
       calibre: lot.calibre,
       quantityRemaining: lot.quantityRemaining,
+    })),
+
+    /* §6.4's lane assignment. Status travels with them because a lane under
+       maintenance must not be offered at the desk, and the desk is exactly where
+       nobody can check. */
+    lanes: source.lanes.map((lane) => ({
+      id: lane.id,
+      discipline: lane.discipline,
+      number: lane.number,
+      status: lane.status,
+      positionCapacity: lane.positionCapacity,
     })),
 
     /* No `pinHash`. §10: "Device-bound sessions with a short local unlock" — the

@@ -1,6 +1,11 @@
+import { and, eq, isNull } from "drizzle-orm";
 import { getArmoryDb, schema } from "@/db/armory/client";
-import type { AppendOnlyWriter } from "@/sync/push";
-import type { AppendOnlyInsert } from "@/sync/operations";
+import type { PushWriter } from "@/sync/push";
+import type {
+  AmmunitionReconcile,
+  AppendOnlyInsert,
+  IncidentWrite,
+} from "@/sync/operations";
 
 /**
  * THE APPEND-ONLY WRITER — §7's idempotency, in one statement.
@@ -46,7 +51,7 @@ import type { AppendOnlyInsert } from "@/sync/operations";
  * against its own table. A `Record<target, PgTable>` would erase exactly the type
  * information this refactor exists to gain.
  */
-export class PostgresAppendOnlyWriter implements AppendOnlyWriter {
+export class PostgresAppendOnlyWriter implements PushWriter {
   async insert(row: AppendOnlyInsert): Promise<{ created: boolean }> {
     const db = getArmoryDb();
 
@@ -105,5 +110,88 @@ export class PostgresAppendOnlyWriter implements AppendOnlyWriter {
         return { created: inserted.length > 0 };
       }
     }
+  }
+
+  /**
+   * §3.3's incident — the one push that is two rows, in one transaction.
+   *
+   * The armoury client holds a pooled TCP connection with real transactions
+   * (src/db/armory/client.ts), which exists for §8.3's allowance write and is
+   * what makes this possible at all. The Neon HTTP driver the leagues product
+   * uses could not do it: two statements, no transaction, and an incident that
+   * can land with nobody attached to it.
+   *
+   * `created` is read from the incident insert only. The join's key is
+   * (incident_id, person_id) and conflicts there are ordinary — the same person
+   * listed twice by two devices reporting the same event — so a `created` read
+   * from the join would report a new incident as a replay and the outbox would
+   * mark a record delivered that was not.
+   */
+  async insertIncident(write: IncidentWrite): Promise<{ created: boolean }> {
+    const db = getArmoryDb();
+
+    return db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(schema.incidents)
+        .values(write.incident)
+        .onConflictDoNothing({ target: schema.incidents.id })
+        .returning({ id: schema.incidents.id });
+
+      /* Written on every delivery, not only the first. A second delivery that
+         carries a person the first did not — an officer who added a witness
+         before the queue drained — must still attach them, and `DO NOTHING`
+         makes re-writing the others free. */
+      if (write.persons.length > 0) {
+        await tx
+          .insert(schema.incidentPersons)
+          .values([...write.persons])
+          .onConflictDoNothing({
+            target: [
+              schema.incidentPersons.incidentId,
+              schema.incidentPersons.personId,
+            ],
+          });
+      }
+
+      return { created: inserted.length > 0 };
+    });
+  }
+
+  /**
+   * §3.4's reconciliation — the one push that is an UPDATE.
+   *
+   * The guarantee is carried entirely by the WHERE clause. `reconciled_at IS
+   * NULL` means the first delivery does the work and every later one matches no
+   * rows, so `applied` is false and the endpoint answers `duplicate` — the same
+   * two outcomes as every insert, reached by a different route.
+   *
+   * Dropping that predicate would leave a statement that still looks idempotent
+   * because it writes the same values. It is not: a redelivered reconciliation
+   * arriving after a correction would overwrite the correction, silently, in the
+   * one number nobody would think to re-check. The arithmetic guard installed in
+   * drizzle/0002 permits the transition exactly once for the same reason.
+   *
+   * `reconciled_at` is the server's clock, not the device's — §2 keeps both, and
+   * the issue row already carries the device's `issued_at`.
+   */
+  async reconcile(values: AmmunitionReconcile): Promise<{ applied: boolean }> {
+    const db = getArmoryDb();
+
+    const updated = await db
+      .update(schema.ammunitionIssues)
+      .set({
+        qtyFired: values.qtyFired,
+        qtyReturned: values.qtyReturned,
+        reconciledAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.ammunitionIssues.id, values.issueId),
+          isNull(schema.ammunitionIssues.reconciledAt),
+        ),
+      )
+      .returning({ id: schema.ammunitionIssues.id });
+
+    return { applied: updated.length > 0 };
   }
 }

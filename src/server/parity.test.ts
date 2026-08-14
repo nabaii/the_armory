@@ -59,6 +59,8 @@ function source(overrides: Partial<DayPackSource> = {}): DayPackSource {
     windowEnd: "2026-08-13",
 
     activeWaiverVersionId: WAIVER,
+    activeWaiverVersion: "2026.1",
+    activeWaiverBody: "You accept that a live range is dangerous.",
     waiverValidityDays: null,
     storageEnabled: false,
     disciplinesRequiringQualification: ["25m-pistol"],
@@ -148,6 +150,12 @@ function source(overrides: Partial<DayPackSource> = {}): DayPackSource {
       },
     ],
 
+    /* §6.5. Empty here on purpose: the parity this file exists to prove is
+       about the SUBJECT the two sides build, and nothing in `subjectFor` or
+       `subjectFromSnapshot` reads a participation. A non-empty list would assert
+       the projection rather than the parity, and that belongs in daypack.test.ts. */
+    participations: [],
+
     firearms: [
       {
         id: "88888888-8888-4888-8888-888888888888",
@@ -165,6 +173,7 @@ function source(overrides: Partial<DayPackSource> = {}): DayPackSource {
       { id: "99999999-9999-4999-8999-999999999999", calibre: ".22 LR", quantityRemaining: 460 },
     ],
 
+    lanes: [],
     staff: [
       {
         id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

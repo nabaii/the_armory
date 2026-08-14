@@ -143,6 +143,50 @@ export type ArrivalRow = {
   invitationId: string | null;
 };
 
+/**
+ * Somebody who is already on the premises — §6.5's relay, M7.
+ *
+ * ===========================================================================
+ * WHY THE PACK CARRIES THESE AND NOT ONLY THE ARRIVALS
+ *
+ * `ArrivalRow` above is who was EXPECTED. Through M5 that was enough, because
+ * the only surface reading the pack was the desk, and the desk writes its own
+ * check-ins — what it expected plus what it recorded is the whole picture.
+ *
+ * A lane tablet has no such luxury. Check-in happens at the counter, on a
+ * different device, and §6.5 asks the lane to show "who is on which lane RIGHT
+ * NOW". Without these rows the relay on a lane tablet would be empty all
+ * evening, or would show expected arrivals as though they had turned up.
+ *
+ * ===========================================================================
+ * THE HONEST LIMIT, STATED RATHER THAN DISCOVERED
+ *
+ * This closes the gap while the club is online. §8.1 refreshes the pack
+ * "continuously while online", so a desk check-in reaches the lane within a
+ * pull.
+ *
+ * With no uplink it does not, and no amount of projection changes that: two
+ * tablets with no network between them cannot learn what the other recorded.
+ * The lane then shows what it issued and scored itself, which is the honest
+ * answer and the reason §6.5's Pair and Score both work from a shooter the lane
+ * can see rather than from a roster it might not have.
+ *
+ * The alternative — peer sync between devices on the club's wifi — is a
+ * distributed system with its own conflict rules, in a build whose §8 already
+ * names offline as the largest single line of effort. It is not in Phase 1 and
+ * nothing here assumes it.
+ */
+export type ParticipationRow = {
+  id: string;
+  sessionId: string;
+  personId: string;
+  role: ParticipantRole;
+  hostPersonId: string | null;
+  laneId: string | null;
+  checkedInAt: InstantString;
+  checkedOutAt: InstantString | null;
+};
+
 export type FirearmRow = {
   id: string;
   serialNumber: string;
@@ -159,6 +203,21 @@ export type AmmunitionLotRow = {
   id: string;
   calibre: string;
   quantityRemaining: number;
+};
+
+/**
+ * §6.4: "three taps maximum from Today to checked in WITH A LANE ASSIGNED."
+ *
+ * The pack carried no lanes until M5, which is why `participations.lane_id` was
+ * written as null throughout M1 — see docs/M1_offline_acceptance.md. A desk
+ * cannot assign what it has not been told about.
+ */
+export type LaneRow = {
+  id: string;
+  discipline: string;
+  number: number;
+  status: "available" | "maintenance" | "closed";
+  positionCapacity: number;
 };
 
 export type StaffRow = {
@@ -191,6 +250,9 @@ export type DayPackSource = {
   windowEnd: DateString;
 
   activeWaiverVersionId: string;
+  /** The label and text of that version. §6.4 signs at the desk, offline. */
+  activeWaiverVersion: string;
+  activeWaiverBody: string;
   waiverValidityDays: number | null;
   storageEnabled: boolean;
   disciplinesRequiringQualification: readonly string[];
@@ -204,8 +266,10 @@ export type DayPackSource = {
   allowances: readonly AllowanceRow[];
   invitations: readonly InvitationRow[];
   arrivals: readonly ArrivalRow[];
+  participations: readonly ParticipationRow[];
   firearms: readonly FirearmRow[];
   ammunitionLots: readonly AmmunitionLotRow[];
+  lanes: readonly LaneRow[];
   staff: readonly StaffRow[];
   devices: readonly DeviceRow[];
 };

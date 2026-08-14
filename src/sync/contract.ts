@@ -61,25 +61,38 @@ import type { DayPack } from "@/offline/daypack";
  *     write silently accepted into the wrong class is how the allowance race in
  *     §8.3 becomes a data loss instead of an exception.
  *
- *   · INCIDENTS. Append-only and genuinely offline-first (§6.5: "always available
- *     offline"), and absent for a plainer reason than the others: there is no lane
- *     surface to originate one yet. That arrives with M7.
+ *   · INCIDENTS — DONE at M7, and the note that stood here was right about the
+ *     shape: "an incident is two rows — `incidents` and the `incident_persons`
+ *     join — and the management system holds a pooled connection with real
+ *     transactions, so both inserts go in one transaction with
+ *     `onConflictDoNothing` on each and the pair is idempotent."
  *
- *     Technically it is ready. An incident is two rows — `incidents` and the
- *     `incident_persons` join — and the management system holds a pooled connection
- *     with real transactions (src/db/armory/client.ts), so both inserts go in one
- *     transaction with `onConflictDoNothing` on each and the pair is idempotent.
- *     Adding it is a parser and a case in the writer, not a design problem.
+ *     That is what `incidents.create` does. It is the only push that is not one
+ *     statement, which is why it has its own `kind` in src/sync/operations.ts
+ *     rather than being smuggled into `AppendOnlyInsert`: the guarantee behind it
+ *     is a transaction rather than a primary key, and a reader has to be able to
+ *     see which of the two they are relying on.
  *
- *     Until the lane screen exists, an incident cannot be recorded offline. That is a
- *     known gap and not a silent one — see docs/M1_offline_acceptance.md.
+ *   · `ammunition_issues.reconcile` — DONE at M6.
+ *
+ *     §3.4: "Reconciled per participation, not per day. qty_issued must equal
+ *     qty_fired plus qty_returned at reconciliation."
+ *
+ *     The one push that is not an insert, because those columns live ON the
+ *     `ammunition_issues` row. Its idempotency is carried by the WHERE clause
+ *     rather than by a primary-key conflict — see `AmmunitionReconcile` in
+ *     src/sync/operations.ts, and the replay tests in src/sync/push.test.ts.
  */
 export const PUSH_OPERATIONS = [
   "participations.checkin",
   "waiver_signatures.create",
   "custody_events.create",
   "ammunition_issues.create",
+  /** §3.4's reconciliation. An UPDATE, guarded — see AmmunitionReconcile. */
+  "ammunition_issues.reconcile",
   "rounds.create",
+  /** §6.5: "always reachable … always available offline." Two rows, one tx. */
+  "incidents.create",
   "audit_log.create",
 ] as const;
 

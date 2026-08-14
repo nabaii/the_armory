@@ -153,6 +153,7 @@ function pack(overrides: Partial<DayPack> = {}): DayPack {
       },
     ],
     ammunitionLots: [{ id: "lot-1", calibre: ".22 LR", quantityRemaining: 460 }],
+    lanes: [],
     staff: [
       {
         id: "s-1",

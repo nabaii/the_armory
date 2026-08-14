@@ -1,5 +1,10 @@
 import type { PushRequest } from "./contract";
-import { parsePush, type AppendOnlyInsert } from "./operations";
+import {
+  parsePush,
+  type AmmunitionReconcile,
+  type AppendOnlyInsert,
+  type IncidentWrite,
+} from "./operations";
 
 /**
  * POST /sync/push — the write half of the offline spine.
@@ -32,10 +37,38 @@ import { parsePush, type AppendOnlyInsert } from "./operations";
  * if the row and the record of having written it are the same statement, there is no
  * pair that can come apart when the power fails mid-request.
  */
-export interface AppendOnlyWriter {
+export interface PushWriter {
   /** `created: false` means the id was already present — the replay case. */
   insert(row: AppendOnlyInsert): Promise<{ created: boolean }>;
+
+  /**
+   * §3.4's reconciliation. `applied: false` means the guard was already closed.
+   *
+   * MUST be a single UPDATE carrying `reconciled_at IS NULL` in its WHERE clause.
+   * That predicate is what makes a replay a no-op, and without it a redelivered
+   * reconciliation would overwrite a later correction — silently, and with the
+   * one number nobody would think to check.
+   */
+  reconcile(values: AmmunitionReconcile): Promise<{ applied: boolean }>;
+
+  /**
+   * §3.3's incident — the one push that is two rows.
+   *
+   * MUST be a single transaction containing both inserts, each with
+   * `ON CONFLICT DO NOTHING`. Not two calls: an incident whose people were
+   * committed separately can be half-present after a connection drops, and the
+   * half that survives is the one with nobody attached to it.
+   *
+   * `created: false` on a replay, decided by the incident row rather than by the
+   * join — the join legitimately conflicts on a first delivery when the same
+   * person is listed by two devices, and reading `created` from it would report
+   * a new incident as a duplicate.
+   */
+  insertIncident(write: IncidentWrite): Promise<{ created: boolean }>;
 }
+
+/** The name this interface had while every push was an insert. */
+export type AppendOnlyWriter = PushWriter;
 
 export type PushResult =
   /** Stored for the first time. */
@@ -65,7 +98,7 @@ export type PushResult =
  */
 export async function handlePush(
   request: PushRequest,
-  writer: AppendOnlyWriter,
+  writer: PushWriter,
   now: () => Date = () => new Date(),
 ): Promise<PushResult> {
   const parsed = parsePush(request);
@@ -75,9 +108,18 @@ export async function handlePush(
   }
 
   try {
-    const { created } = await writer.insert(parsed.row);
+    /* Both branches answer the same two outcomes — this delivery did the work,
+       or an earlier one already had. §8.5 looks for exactly that on its second
+       connection: "every record must reach the server exactly once." */
+    const stored =
+      parsed.write.kind === "insert"
+        ? (await writer.insert(parsed.write.row)).created
+        : parsed.write.kind === "incident"
+          ? (await writer.insertIncident(parsed.write.write)).created
+          : (await writer.reconcile(parsed.write.values)).applied;
+
     return {
-      kind: created ? "applied" : "duplicate",
+      kind: stored ? "applied" : "duplicate",
       recordedAt: now(),
     };
   } catch (error) {

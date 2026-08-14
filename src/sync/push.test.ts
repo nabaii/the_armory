@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { uuidv7 } from "@/lib/uuidv7";
 import { PUSH_OPERATIONS, type PushOperation, type PushRequest } from "./contract";
-import { handlePush, type AppendOnlyWriter } from "./push";
-import { parsePush, type AppendOnlyInsert } from "./operations";
+import { handlePush, type PushWriter } from "./push";
+import {
+  parsePush,
+  type AmmunitionReconcile,
+  type AppendOnlyInsert,
+  type IncidentWrite,
+} from "./operations";
 
 /**
  * §7:  "A queued write delivered twice must produce one row, not two. This is the
@@ -28,11 +33,15 @@ const STAFF = "7a2b4c6d-8e90-4f12-a345-b6c7d8e9f012";
  * real statement ever conflicts on something different, this test stops
  * describing it.
  */
-class FakeWriter implements AppendOnlyWriter {
+class FakeWriter implements PushWriter {
   readonly rows = new Map<
     string,
     { target: string; values: Record<string, unknown> }
   >();
+  /** Issues this fake considers already reconciled, by id. */
+  readonly reconciled = new Map<string, AmmunitionReconcile>();
+  /** §3.3's join, keyed as the real one is: (incident_id, person_id). */
+  readonly incidentPersons = new Set<string>();
   attempts = 0;
 
   async insert(row: AppendOnlyInsert): Promise<{ created: boolean }> {
@@ -45,10 +54,53 @@ class FakeWriter implements AppendOnlyWriter {
     this.rows.set(id, { target: row.target, values: { ...row.values } });
     return { created: true };
   }
+
+  /**
+   * Behaves like `UPDATE … WHERE id = $1 AND reconciled_at IS NULL`.
+   *
+   * Keyed on the guard rather than on the request id, because the guard is what
+   * the real statement relies on — if the Postgres writer ever drops that
+   * predicate, this fake stops describing it and the replay test below is the
+   * thing that should have caught it.
+   */
+  async reconcile(values: AmmunitionReconcile): Promise<{ applied: boolean }> {
+    this.attempts += 1;
+    if (this.reconciled.has(values.issueId)) return { applied: false };
+    this.reconciled.set(values.issueId, values);
+    return { applied: true };
+  }
+
+  /**
+   * Behaves like the transaction in src/server/sync/writer.ts.
+   *
+   * The incident lands in `rows` with everything else so the replay count below
+   * covers it without a special case. The people are kept apart and keyed on
+   * (incident, person) — the real join's primary key — because the guarantee
+   * being tested is that a redelivery attaches nobody twice, and a fake that
+   * keyed them on the incident alone would pass whatever the writer did.
+   */
+  async insertIncident(write: IncidentWrite): Promise<{ created: boolean }> {
+    this.attempts += 1;
+    const id = write.incident.id as string;
+
+    for (const person of write.persons) {
+      this.incidentPersons.add(`${person.incidentId}:${person.personId}`);
+    }
+
+    if (this.rows.has(id)) return { created: false };
+    this.rows.set(id, { target: "incidents", values: { ...write.incident } });
+    return { created: true };
+  }
 }
 
-class BrokenWriter implements AppendOnlyWriter {
+class BrokenWriter implements PushWriter {
   async insert(): Promise<{ created: boolean }> {
+    throw new Error("connection reset");
+  }
+  async reconcile(): Promise<{ applied: boolean }> {
+    throw new Error("connection reset");
+  }
+  async insertIncident(): Promise<{ created: boolean }> {
     throw new Error("connection reset");
   }
 }
@@ -68,7 +120,16 @@ const LOT = "5e6f7081-92a3-44b5-c6d7-e8f901234567";
 const PARTICIPATION = "6f708192-a3b4-45c6-d7e8-f90123456789";
 const WAIVER_VERSION = "708192a3-b4c5-46d7-e8f9-012345678901";
 
+const AMMO_ISSUE = "8192a3b4-c5d6-47e8-f901-23456789abcd";
+const WITNESS = "92a3b4c5-d6e7-48f9-a012-3456789abcde";
+
 const payloads: Record<PushOperation, unknown> = {
+  /* §3.4's reconciliation. Balances: 35 fired + 5 returned = 40 issued. */
+  "ammunition_issues.reconcile": {
+    issueId: AMMO_ISSUE,
+    qtyFired: 35,
+    qtyReturned: 5,
+  },
   "participations.checkin": {
     sessionId: SESSION,
     personId: PERSON,
@@ -111,6 +172,16 @@ const payloads: Record<PushOperation, unknown> = {
     correctsRoundId: null,
     correctionReason: null,
   },
+  "incidents.create": {
+    sessionId: SESSION,
+    category: "safety_breach",
+    narrative: "Muzzle crossed the line at bay three. Shooter stood down.",
+    occurredAt: "2026-08-12T10:10:00.000Z",
+    persons: [
+      { personId: PERSON, involvement: "involved" },
+      { personId: WITNESS, involvement: "witness" },
+    ],
+  },
   "audit_log.create": {
     action: "check_in",
     entityType: "participation",
@@ -152,7 +223,15 @@ describe("a queued write delivered twice produces one row", () => {
         "duplicate",
         "a replay must be reported as already present, not applied again",
       );
-      assert.equal(writer.rows.size, 1, "§7: one row, not two");
+      /* Inserts land in `rows`; the reconciliation lands in `reconciled`. Both
+         must end at exactly one, and the assertion is deliberately written
+         against whichever the operation uses rather than skipping the odd one
+         out — §12 wants the replay proof over EVERY operation. */
+      assert.equal(
+        writer.rows.size + writer.reconciled.size,
+        1,
+        "§7: one row, not two",
+      );
       assert.equal(writer.attempts, 2, "both deliveries reached the writer");
     });
   }
@@ -191,6 +270,12 @@ describe("a queued write delivered twice produces one row", () => {
 describe("every write is attributed", () => {
   it("records the device and the officer on every operation", async () => {
     for (const operation of PUSH_OPERATIONS) {
+      /* §3.4's reconciliation writes no new row — it closes two columns on a row
+         the server already has, and that row was attributed when it was created.
+         Asserting attribution on an UPDATE would be asserting it twice about the
+         same record. */
+      if (operation === "ammunition_issues.reconcile") continue;
+
       const writer = new FakeWriter();
       await handlePush(request(operation), writer, () => NOW);
 
@@ -203,7 +288,8 @@ describe("every write is attributed", () => {
         row.values.actorStaffId ??
         row.values.checkedInByStaffId ??
         row.values.issuedByStaffId ??
-        row.values.capturedByStaffId;
+        row.values.capturedByStaffId ??
+        row.values.reportedByStaffId;
 
       /* waiver_signatures has no actor column: a signature is attributed to the
          person who signed it, not to the officer watching. */
@@ -219,15 +305,17 @@ describe("every write is attributed", () => {
        the next morning must read as having been issued during the power cut. */
     const parsed = parsePush(request("custody_events.create"));
     assert.ok(parsed.ok);
-    assert.equal(parsed.row.target, "custodyEvents");
-    if (parsed.row.target !== "custodyEvents") return;
+    assert.equal(parsed.write.kind, "insert");
+    if (parsed.write.kind !== "insert") return;
+    assert.equal(parsed.write.row.target, "custodyEvents");
+    if (parsed.write.row.target !== "custodyEvents") return;
 
     assert.equal(
-      parsed.row.values.occurredAt?.toISOString(),
+      parsed.write.row.values.occurredAt?.toISOString(),
       "2026-08-12T09:20:00.000Z",
     );
     assert.ok(
-      !("recordedAt" in parsed.row.values),
+      !("recordedAt" in parsed.write.row.values),
       "recordedAt is the server's clock and must be left to the database default",
     );
   });
@@ -350,5 +438,242 @@ describe("a broken database is retryable, not a rejection", () => {
     );
 
     assert.equal(result.kind, "failed");
+  });
+});
+
+/* ===========================================================================
+   §3.4's RECONCILIATION — the one push that is not an insert.
+   ======================================================================== */
+
+describe("ammunition reconciliation", () => {
+  const reconcile = (payload: unknown): PushRequest => ({
+    id: uuidv7(),
+    operation: "ammunition_issues.reconcile",
+    payload,
+    deviceId: DEVICE,
+    actorStaffId: STAFF,
+    clientRecordedAt: "2026-08-12T09:20:00.000Z",
+  });
+
+  it("closes the guard on the first delivery and no-ops after", async () => {
+    /* The idempotency here is NOT "the primary key exists" — no row is created.
+       It is `reconciled_at IS NULL` in the WHERE clause, and the fake keys on
+       exactly that so it stops describing the real statement if the predicate is
+       ever dropped. */
+    const writer = new FakeWriter();
+
+    const first = await handlePush(
+      reconcile({ issueId: AMMO_ISSUE, qtyFired: 35, qtyReturned: 5 }),
+      writer,
+      () => NOW,
+    );
+    const second = await handlePush(
+      reconcile({ issueId: AMMO_ISSUE, qtyFired: 35, qtyReturned: 5 }),
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(first.kind, "applied");
+    assert.equal(second.kind, "duplicate");
+    assert.equal(writer.reconciled.size, 1);
+  });
+
+  it("does not let a redelivery overwrite a later correction", async () => {
+    /* The failure the guard exists for, and the reason it is not enough for the
+       statement to "write the same values": a corrected count arrives, then the
+       original is redelivered by a queue that never heard the first response.
+       Without the guard the correction is silently undone. */
+    const writer = new FakeWriter();
+
+    await handlePush(
+      reconcile({ issueId: AMMO_ISSUE, qtyFired: 35, qtyReturned: 5 }),
+      writer,
+      () => NOW,
+    );
+    await handlePush(
+      reconcile({ issueId: AMMO_ISSUE, qtyFired: 30, qtyReturned: 10 }),
+      writer,
+      () => NOW,
+    );
+
+    assert.deepEqual(writer.reconciled.get(AMMO_ISSUE), {
+      issueId: AMMO_ISSUE,
+      qtyFired: 35,
+      qtyReturned: 5,
+    });
+  });
+
+  it("refuses counts that are not whole numbers, in English", async () => {
+    const writer = new FakeWriter();
+    const result = await handlePush(
+      reconcile({ issueId: AMMO_ISSUE, qtyFired: "some", qtyReturned: 5 }),
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(result.kind, "rejected");
+    if (result.kind !== "rejected") return;
+    assert.doesNotMatch(result.reason, /qtyFired/);
+    assert.match(result.reason, /fired/i);
+  });
+
+  it("refuses a reconciliation that names no issue", async () => {
+    const writer = new FakeWriter();
+    const result = await handlePush(
+      reconcile({ qtyFired: 35, qtyReturned: 5 }),
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(result.kind, "rejected");
+    assert.equal(writer.reconciled.size, 0);
+  });
+});
+
+/* ===========================================================================
+   INCIDENTS — §3.3, §6.5. The one push that is two rows.
+   ======================================================================== */
+
+describe("an incident and its people arrive together", () => {
+  const incident = (payload: Record<string, unknown>): PushRequest =>
+    request("incidents.create", {
+      payload: {
+        ...(payloads["incidents.create"] as Record<string, unknown>),
+        ...payload,
+      },
+    });
+
+  it("attaches everyone named, once, across a redelivery", async () => {
+    const writer = new FakeWriter();
+    const item = request("incidents.create");
+
+    const first = await handlePush(item, writer, () => NOW);
+    const second = await handlePush(item, writer, () => NOW);
+
+    assert.equal(first.kind, "applied");
+    assert.equal(second.kind, "duplicate");
+    assert.equal(writer.rows.size, 1, "§7: one incident, not two");
+    assert.equal(
+      writer.incidentPersons.size,
+      2,
+      "the join is keyed on (incident, person) and must not double up",
+    );
+  });
+
+  it("attaches a witness added between two deliveries", async () => {
+    /* An officer who remembers a second witness while the queue is still down.
+       The record's id has not changed, so the incident row is a duplicate — but
+       the person must still land, which is why the writer inserts the join on
+       every delivery rather than only on the first. */
+    const writer = new FakeWriter();
+    const id = uuidv7();
+
+    await handlePush(
+      { ...incident({ persons: [{ personId: PERSON, involvement: "involved" }] }), id },
+      writer,
+      () => NOW,
+    );
+    const second = await handlePush(
+      {
+        ...incident({
+          persons: [
+            { personId: PERSON, involvement: "involved" },
+            { personId: WITNESS, involvement: "witness" },
+          ],
+        }),
+        id,
+      },
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(second.kind, "duplicate");
+    assert.equal(writer.rows.size, 1);
+    assert.equal(writer.incidentPersons.size, 2);
+  });
+
+  it("records one that happened to nobody, because those exist", async () => {
+    /* Equipment faults and property damage often name no person, and refusing
+       them would push the club back to paper for the category most likely to
+       matter to an insurer. */
+    const writer = new FakeWriter();
+    const result = await handlePush(
+      incident({ category: "equipment_fault", persons: [] }),
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(result.kind, "applied");
+    assert.equal(writer.incidentPersons.size, 0);
+  });
+
+  it("records one that happened outside a session", async () => {
+    /* §3.3 makes session_id nullable. The car park, before the session opens. */
+    const writer = new FakeWriter();
+    const result = await handlePush(
+      incident({ sessionId: null }),
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(result.kind, "applied");
+    assert.equal([...writer.rows.values()][0].values.sessionId, null);
+  });
+
+  it("refuses one with no account of what happened, in English", async () => {
+    const writer = new FakeWriter();
+    const result = await handlePush(
+      incident({ narrative: "   " }),
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(result.kind, "rejected");
+    if (result.kind !== "rejected") return;
+    assert.equal(result.reason, "An incident has to say what happened.");
+    assert.equal(writer.rows.size, 0);
+  });
+
+  it("refuses a category nobody defined rather than filing it as text", async () => {
+    const writer = new FakeWriter();
+    const result = await handlePush(
+      incident({ category: "whatever" }),
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(result.kind, "rejected");
+    assert.equal(writer.rows.size, 0);
+  });
+
+  it("refuses a person with no stated involvement", async () => {
+    const writer = new FakeWriter();
+    const result = await handlePush(
+      incident({ persons: [{ personId: PERSON }] }),
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(result.kind, "rejected");
+    assert.equal(writer.rows.size, 0);
+  });
+
+  it("de-duplicates a person listed twice rather than failing the transaction", async () => {
+    /* A double tap on a tablet. The join's primary key would reject the second
+       insert and take the whole incident down with it. */
+    const writer = new FakeWriter();
+    const result = await handlePush(
+      incident({
+        persons: [
+          { personId: PERSON, involvement: "involved" },
+          { personId: PERSON, involvement: "witness" },
+        ],
+      }),
+      writer,
+      () => NOW,
+    );
+
+    assert.equal(result.kind, "applied");
+    assert.equal(writer.incidentPersons.size, 1);
   });
 });

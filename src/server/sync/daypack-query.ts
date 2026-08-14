@@ -82,7 +82,17 @@ export async function loadDayPackSource(now: Date): Promise<DayPackSource> {
     /* §3.1: "Exactly one active version at a time." Read first: without it there is
        no pack to build, and failing before thirteen queries is cheaper than after. */
     const [activeWaiver] = await tx
-      .select({ id: schema.waiverVersions.id })
+      .select({
+        id: schema.waiverVersions.id,
+        /* The label and the text travel with the pack because §6.4's desk has to
+           SHOW the document before it can take a signature against it, and it has
+           to do that with no network. A tablet that could record an acceptance but
+           could not display what was accepted would be producing evidence of
+           nothing. Club boilerplate, not personal data — so unlike a licence scan
+           it is safe to hold on a desk surface (§10). */
+        version: schema.waiverVersions.version,
+        body: schema.waiverVersions.body,
+      })
       .from(schema.waiverVersions)
       .where(eq(schema.waiverVersions.isActive, true))
       .limit(1);
@@ -321,6 +331,52 @@ export async function loadDayPackSource(now: Date): Promise<DayPackSource> {
       .where(gte(schema.ammunitionLots.quantityRemaining, 1))
       .orderBy(schema.ammunitionLots.receivedOn);
 
+    /**
+     * Who is on the premises right now — §6.5's relay, M7.
+     *
+     * Scoped to OPEN sessions rather than to the pack's date window. The two
+     * are almost the same and differ in the case that matters: a session opened
+     * before midnight and still running at one in the morning is a range with
+     * people on it, and a query keyed on today's date would empty the relay
+     * under an officer who is still working.
+     *
+     * Checked-out rows travel too. `relay()` filters them, and the close guard
+     * in §6.4 needs to know somebody left rather than merely not seeing them.
+     */
+    const participations = await tx
+      .select({
+        id: schema.participations.id,
+        sessionId: schema.participations.sessionId,
+        personId: schema.participations.personId,
+        role: schema.participations.role,
+        hostPersonId: schema.participations.hostPersonId,
+        laneId: schema.participations.laneId,
+        checkedInAt: instant(schema.participations.checkedInAt),
+        checkedOutAt: instantOrNull(schema.participations.checkedOutAt),
+      })
+      .from(schema.participations)
+      .innerJoin(
+        schema.sessions,
+        eq(schema.sessions.id, schema.participations.sessionId),
+      )
+      .where(eq(schema.sessions.status, "open"))
+      .orderBy(schema.participations.checkedInAt);
+
+    /* Every lane, including the ones that are down. §6.4 assigns a lane at
+       check-in and the officer must be able to see why a bay is unavailable —
+       omitting a lane under maintenance would make it look as though the club
+       had one fewer bay than it has. */
+    const lanes = await tx
+      .select({
+        id: schema.lanes.id,
+        discipline: schema.lanes.discipline,
+        number: schema.lanes.number,
+        status: schema.lanes.status,
+        positionCapacity: schema.lanes.positionCapacity,
+      })
+      .from(schema.lanes)
+      .orderBy(schema.lanes.discipline, schema.lanes.number);
+
     /* No `pinHash`. §10: a pack containing every officer's PIN hash would move the
        club's staff authentication onto a tablet that can be carried out of the
        building. */
@@ -359,6 +415,8 @@ export async function loadDayPackSource(now: Date): Promise<DayPackSource> {
       windowEnd: windowEnd as DateString,
 
       activeWaiverVersionId: activeWaiver.id,
+      activeWaiverVersion: activeWaiver.version,
+      activeWaiverBody: activeWaiver.body,
       /**
        * §14 has not settled how long a signature stays valid, and §3.1's note says
        * this "fails open" until it does. Null means a signature against the active
@@ -385,8 +443,10 @@ export async function loadDayPackSource(now: Date): Promise<DayPackSource> {
       allowances,
       invitations,
       arrivals,
+      participations,
       firearms,
       ammunitionLots,
+      lanes,
       staff,
       devices,
     };

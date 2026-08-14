@@ -3,6 +3,7 @@ import {
   expiries,
   foreseeableBlocks,
   type Decision,
+  type WaiverSignatureSnapshot,
 } from "@/domain/capability";
 import { isLicenceLive } from "@/domain/state-machines";
 import { formatDate, formatTime } from "@/lib/time";
@@ -115,8 +116,13 @@ export function personDetail(
   personId: string,
   now: Date,
   checkedIn: ReadonlySet<string>,
+  /* Signatures taken at this desk. Threaded through for the same reason the
+     Today row takes them: this panel is open in front of the officer while they
+     sign, and a screen still listing an unsigned waiver a minute afterwards
+     would send them to fix something they had just fixed. */
+  locallySigned: ReadonlyMap<string, WaiverSignatureSnapshot> = new Map(),
 ): PersonDetailView | null {
-  const subject = subjectFor(indexed, personId);
+  const subject = subjectFor(indexed, personId, locallySigned);
   const person = indexed.personById.get(personId);
   if (!subject || !person) return null;
 
@@ -167,7 +173,7 @@ export function personDetail(
     standing: standingLine(tier?.name ?? null, membership?.memberNumber ?? null),
     line: decision.allowed ? "" : decision.reason.message,
     onPremises: checkedIn.has(personId),
-    documents: documentLines(indexed, personId, now),
+    documents: documentLines(indexed, personId, now, subject.waiver),
     blocks,
     expiring: expiries(subject, now).map(
       (expiry) =>
@@ -203,23 +209,33 @@ function documentLines(
   indexed: IndexedDayPack,
   personId: string,
   now: Date,
+  /**
+   * The signature the capability service saw — `subject.waiver`, not the pack.
+   *
+   * Passed in rather than looked up here, because the two are no longer the same
+   * thing: a waiver signed at this desk is in local state and not in the pack
+   * until the next sync. Reading the pack directly would put this panel's
+   * documents list and its blocks list on different information, and they are
+   * two paragraphs of the same screen — an officer who has just watched somebody
+   * sign would be told, an inch apart, that the waiver is in order and that it
+   * is out of date.
+   */
+  waiver: WaiverSignatureSnapshot | null,
 ): DocumentLine[] {
   const pack = indexed.pack;
   const lines: DocumentLine[] = [];
 
-  const signature = indexed.waiverByPersonId.get(personId);
   const signedCurrent =
-    signature !== undefined &&
-    signature.waiverVersionId === pack.activeWaiverVersionId;
+    waiver !== null && waiver.waiverVersionId === pack.activeWaiverVersionId;
 
   lines.push({
     kind: "waiver",
     label: "Waiver",
-    state: !signature
+    state: !waiver
       ? "Never signed"
       : signedCurrent
-        ? `Signed ${formatDate(new Date(signature.signedAt))}`
-        : `Signed against an earlier version on ${formatDate(new Date(signature.signedAt))}`,
+        ? `Signed ${formatDate(waiver.signedAt)}`
+        : `Signed against an earlier version on ${formatDate(waiver.signedAt)}`,
     live: signedCurrent,
     expiresOn: null,
   });

@@ -28,6 +28,10 @@ const ENDPOINTS = {
   daypack: "/sync/daypack",
   push: "/sync/push",
   pull: "/sync/pull",
+  /* Not under /sync/, because it is not part of the device protocol — it is
+     §7's identity group, and the console service worker treats it the same way
+     regardless: never cached. */
+  unlock: "/api/auth/staff/unlock",
 } as const;
 
 /**
@@ -392,4 +396,64 @@ export async function refreshDayPack(
   }
 
   return { kind: "pack", pack: body.pack, etag: body.etag };
+}
+
+
+/* ============================================================================
+   THE OFFICER UNLOCK — §10, §7's identity group.
+   ========================================================================= */
+
+/**
+ * Exchange a PIN for a staff session, while there is a connection.
+ *
+ * This is the ONLINE half of §10's "device-bound sessions with a short local
+ * unlock". The offline half is src/offline/officer.ts, and the two are joined by
+ * one rule: the local verifier is derived only after this call has succeeded.
+ * Deriving it first would let anyone holding the tablet mint a shift for any
+ * officer they could name.
+ *
+ * The device token goes in the Authorization header, as everywhere else — the
+ * PIN alone proves nothing, and the server refuses a request that does not
+ * already prove which tablet it came from.
+ *
+ * Returns a plain ok/reason rather than a session token, deliberately. The desk
+ * has no use for the server's session: every write it makes travels through the
+ * outbox, which is authenticated by the DEVICE (§7's push contract), and the
+ * officer's identity rides on the record as `actorStaffId`. Holding a second
+ * bearer credential on the tablet would be one more thing for §10's revocation
+ * to have to reach.
+ */
+export async function unlockOfficer(
+  deviceToken: string,
+  input: { staffUserId: string; pin: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  let response: Response;
+
+  try {
+    response = await withTimeout(
+      ENDPOINTS.unlock,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${deviceToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(input),
+      },
+      fetchImpl,
+    );
+  } catch {
+    /* No answer. The officer is told to try the offline path rather than being
+       shown a network error they cannot act on — §1.1's whole premise is that
+       the uplink is unreliable and the range keeps operating. */
+    return {
+      ok: false,
+      reason: "The club's system could not be reached. Try again in a moment.",
+    };
+  }
+
+  if (response.ok) return { ok: true };
+
+  return { ok: false, reason: await reason(response) };
 }

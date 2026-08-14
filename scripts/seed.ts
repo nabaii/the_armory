@@ -443,20 +443,57 @@ async function seed() {
   const waiverOldId = uuidv7At(midnight.getTime() - 300 * DAY);
   const waiverActiveId = uuidv7At(midnight.getTime() - 1 * DAY);
 
+  /**
+   * PLACEHOLDER TEXT. The club's counsel supplies the real thing (§14).
+   *
+   * Long enough to be a document rather than a label, deliberately: the desk
+   * renders this in full above the signing area (WaiverSheet.tsx), and step 9 of
+   * docs/M1_offline_acceptance.md asks the tester to confirm it is on screen. A
+   * one-line fixture would make that check pass without exercising the scrolling
+   * panel or showing what the layout does on the tablet being bought.
+   */
+  const waiverBody = [
+    "RANGE WAIVER, ASSUMPTION OF RISK AND RELEASE",
+    "",
+    "1. I understand that a live firing range is inherently dangerous, and that",
+    "   discharge of a firearm can cause serious injury, permanent disability,",
+    "   hearing loss and death, to me and to others present.",
+    "",
+    "2. I confirm that I am not under the influence of alcohol or of any",
+    "   substance that impairs judgement or coordination, and that I will leave",
+    "   the firing line and inform a range officer if that changes.",
+    "",
+    "3. I will obey every instruction of a range officer immediately and without",
+    "   argument, including any instruction to cease fire, unload, or leave the",
+    "   firing line. I understand that failure to do so ends my visit.",
+    "",
+    "4. I will wear eye and ear protection at all times beyond the firing line,",
+    "   and I will treat every firearm as loaded.",
+    "",
+    "5. I accept responsibility for any firearm and ammunition issued to me,",
+    "   and I will return both to a range officer before leaving.",
+    "",
+    "6. I release the club, its officers and its members from liability for",
+    "   injury or loss arising from my attendance, save where caused by their",
+    "   own gross negligence or wilful act.",
+    "",
+    "I have read the above and I sign it freely.",
+  ].join("\n");
+
   step(
     "waiver versions (1 active, 1 superseded yesterday)",
     await insert(schema.waiverVersions, [
       {
         id: waiverOldId,
         version: "2025.1",
-        body: "Superseded waiver text.",
+        body: `${waiverBody}\n\n[Superseded by 2026.1.]`,
         effectiveFrom: dayOffset(-300),
         isActive: false,
       },
       {
         id: waiverActiveId,
         version: "2026.1",
-        body: "Active waiver text.",
+        body: waiverBody,
         effectiveFrom: dayOffset(-1),
         isActive: true,
       },

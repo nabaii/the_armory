@@ -144,6 +144,7 @@ console.log(
 for (const check of [
   "Cold start with no network reaches a usable desk screen in under one second, on the tablet model being purchased.",
   "A guest blocked for host absence clears by itself when the host checks in, with no reload.",
+  "A waiver signed at the desk clears the block by itself, and the row is checked in afterwards.",
   "Power physically pulled mid-session: every record is present on reopening.",
   "On reconnection, every record reaches the server exactly once.",
   "A record deliberately delivered twice produces one row, on the live database.",

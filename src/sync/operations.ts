@@ -1,6 +1,8 @@
 import {
   CAPTURE_METHODS,
   CUSTODY_EVENT_TYPES,
+  INCIDENT_CATEGORIES,
+  INCIDENT_INVOLVEMENTS,
   PARTICIPANT_ROLES,
 } from "@/domain/enums";
 import { isUuidv7 } from "@/lib/uuidv7";
@@ -95,8 +97,72 @@ export type AppendOnlyInsert =
   | { target: "rounds"; values: typeof armory.rounds.$inferInsert }
   | { target: "auditLog"; values: typeof armory.auditLog.$inferInsert };
 
+/**
+ * §3.4's reconciliation, and the one push that is not an insert.
+ *
+ *   "Reconciled per participation, not per day. qty_issued must equal qty_fired
+ *    plus qty_returned at reconciliation."
+ *
+ * Those columns live ON the `ammunition_issues` row, so this is an UPDATE. It is
+ * kept as a distinct shape rather than smuggled into `AppendOnlyInsert` because
+ * the two have different idempotency arguments and only one of them is "the
+ * primary key already exists":
+ *
+ *   insert     ON CONFLICT (id) DO NOTHING — a replay conflicts and changes
+ *              nothing.
+ *   reconcile  WHERE reconciled_at IS NULL — a replay finds the guard closed and
+ *              changes nothing.
+ *
+ * Both are single statements and both are safe to deliver twice, which is what
+ * §7 asks. Collapsing them into one type would hide the fact that the second
+ * argument exists at all, and the guard is the whole of it: without
+ * `reconciled_at IS NULL` a replayed reconciliation would silently overwrite a
+ * later correction.
+ */
+export type AmmunitionReconcile = {
+  readonly issueId: string;
+  readonly qtyFired: number;
+  readonly qtyReturned: number;
+};
+
+/**
+ * §3.3's incident, which is two rows and cannot be one statement.
+ *
+ *   "Plus incident_persons join carrying person_id and involvement. MUST BE
+ *    CREATABLE OFFLINE."
+ *
+ * ===========================================================================
+ * WHY THIS IS NOT AN `AppendOnlyInsert`
+ *
+ * Every other push in this file is safe to replay because its primary key is
+ * the client-generated id: the second delivery conflicts with the row the first
+ * one wrote and does nothing. That argument does not reach the join table, whose
+ * key is (incident_id, person_id) and which has no client id of its own.
+ *
+ * So this one is a transaction — both inserts, each `ON CONFLICT DO NOTHING`,
+ * committed together. The idempotency argument changes from "the primary key
+ * already exists" to "the transaction either happened or did not", and it is
+ * worth a reader being able to tell which of those they are standing on. A
+ * separate `kind` makes that visible in the type; folding it into
+ * `AppendOnlyInsert` would have hidden it behind a table name.
+ *
+ * The people are part of the incident, not a follow-up write. A queued incident
+ * that landed while its `incident_persons` rows were still on a tablet would be
+ * a report of something that happened to nobody — which is the version of the
+ * record that gets produced in an inquiry.
+ */
+export type IncidentWrite = {
+  readonly incident: typeof armory.incidents.$inferInsert;
+  readonly persons: readonly (typeof armory.incidentPersons.$inferInsert)[];
+};
+
+export type PushWrite =
+  | { kind: "insert"; row: AppendOnlyInsert }
+  | { kind: "reconcile"; values: AmmunitionReconcile }
+  | { kind: "incident"; write: IncidentWrite };
+
 export type ParseResult =
-  | { ok: true; row: AppendOnlyInsert }
+  | { ok: true; write: PushWrite }
   | { ok: false; reason: string; remedy: string | null };
 
 const reject = (reason: string, remedy: string | null = null): ParseResult => ({
@@ -253,7 +319,7 @@ const parsers: Record<PushOperation, Parser> = {
 
     return {
       ok: true,
-      row: {
+      write: { kind: "insert", row: {
         target: "participations",
         values: {
           id: request.id,
@@ -271,7 +337,7 @@ const parsers: Record<PushOperation, Parser> = {
              left to the column default. §2 — both clocks, never one instead of
              the other. */
         },
-      },
+      } },
     };
   },
 
@@ -298,7 +364,7 @@ const parsers: Record<PushOperation, Parser> = {
 
     return {
       ok: true,
-      row: {
+      write: { kind: "insert", row: {
         target: "waiverSignatures",
         values: {
           id: request.id,
@@ -308,7 +374,7 @@ const parsers: Record<PushOperation, Parser> = {
           signedAt,
           deviceId: request.deviceId,
         },
-      },
+      } },
     };
   },
 
@@ -358,7 +424,7 @@ const parsers: Record<PushOperation, Parser> = {
 
     return {
       ok: true,
-      row: {
+      write: { kind: "insert", row: {
         target: "custodyEvents",
         values: {
           id: request.id,
@@ -372,7 +438,7 @@ const parsers: Record<PushOperation, Parser> = {
           correctsEventId,
           note,
         },
-      },
+      } },
     };
   },
 
@@ -408,7 +474,7 @@ const parsers: Record<PushOperation, Parser> = {
 
     return {
       ok: true,
-      row: {
+      write: { kind: "insert", row: {
         target: "ammunitionIssues",
         values: {
           id: request.id,
@@ -424,11 +490,42 @@ const parsers: Record<PushOperation, Parser> = {
           issuedAt,
           deviceId: request.deviceId,
         },
-      },
+      } },
     };
   },
 
   /** A score. §3.3: "APPEND-ONLY. capture_method: manual, electronic." */
+  /**
+   * §3.4: "qty_issued must equal qty_fired plus qty_returned at reconciliation."
+   *
+   * The arithmetic is checked HERE as well as by the database, because a refusal
+   * from a CHECK constraint reaches the officer as a Postgres error string and
+   * §8.2 requires it to reach them as English. drizzle/0002 remains the authority;
+   * this is the sentence.
+   */
+  "ammunition_issues.reconcile": (request, payload) => {
+    const issueId = uuid(payload, "issueId");
+    if (!issueId) return missing("issueId", "which issue is being reconciled");
+
+    const qtyFired = wholeNumber(payload, "qtyFired");
+    if (qtyFired === undefined) {
+      return missing("qtyFired", "how many rounds were fired");
+    }
+
+    const qtyReturned = wholeNumber(payload, "qtyReturned");
+    if (qtyReturned === undefined) {
+      return missing("qtyReturned", "how many rounds came back");
+    }
+
+    /* The count the officer typed, not a count derived from anything. §3.4
+       reconciles per participation precisely so that when it does not balance,
+       the club knows WHOSE rounds are missing rather than only that some are. */
+    return {
+      ok: true,
+      write: { kind: "reconcile", values: { issueId, qtyFired, qtyReturned } },
+    };
+  },
+
   "rounds.create": (request, payload) => {
     const participationId = uuid(payload, "participationId");
     if (!participationId) return missing("participationId", "whose score this is");
@@ -476,7 +573,7 @@ const parsers: Record<PushOperation, Parser> = {
 
     return {
       ok: true,
-      row: {
+      write: { kind: "insert", row: {
         target: "rounds",
         values: {
           id: request.id,
@@ -492,6 +589,103 @@ const parsers: Record<PushOperation, Parser> = {
           correctsRoundId,
           correctionReason,
           deviceId: request.deviceId,
+        },
+      } },
+    };
+  },
+
+  /**
+   * An incident. §3.3, §6.5.
+   *
+   *   §3.3: "Plus incident_persons join carrying person_id and involvement. Must
+   *    be creatable offline."
+   *   §6.5: "Always reachable, never more than one tap away, always available
+   *    offline."
+   *
+   * ===========================================================================
+   * THE NARRATIVE IS THE ONE FREE-TEXT FIELD IN THIS FILE, AND IT HAS TO BE
+   *
+   * §6.5 forbids free text "in the normal path" for scores, and the reasoning in
+   * src/domain/scoring.ts is about what a leagues engine can rank. None of it
+   * applies here. An incident narrative is evidence, written once, read by a
+   * founder and possibly by a regulator or an insurer, and there is no list of
+   * options that covers what happened on a range.
+   *
+   * So the category is constrained and the narrative is not — and the narrative
+   * is REQUIRED, because an incident row with a category and no account of it is
+   * the record that cannot be stood behind later.
+   *
+   * ===========================================================================
+   * A SESSION IS OPTIONAL AND A NARRATIVE IS NOT
+   *
+   * `session_id` is nullable in §3.3 and this parser honours that rather than
+   * insisting. Things happen in the car park, before the session opens, after it
+   * closes. An incident refused because the officer had not opened a session yet
+   * is an incident recorded on paper, or not at all.
+   */
+  "incidents.create": (request, payload) => {
+    const category = oneOf(payload, "category", INCIDENT_CATEGORIES);
+    if (!category) return missing("category", "what kind of incident it was");
+
+    const narrative = text(payload, "narrative");
+    if (!narrative) {
+      return reject(
+        "An incident has to say what happened.",
+        "Add a short account of the incident and send it again.",
+      );
+    }
+
+    const occurredAt = instant(payload, "occurredAt");
+    if (!occurredAt) return missing("occurredAt", "the time it happened");
+
+    const sessionId = optionalUuid(payload, "sessionId");
+    if (sessionId === undefined) return missing("sessionId", "a valid session");
+
+    const followUpStatus = text(payload, "followUpStatus") ?? "open";
+
+    const people = Array.isArray(payload.persons) ? payload.persons : [];
+    const persons: (typeof armory.incidentPersons.$inferInsert)[] = [];
+    const seen = new Set<string>();
+
+    for (const entry of people) {
+      const row = asObject(entry);
+      if (!row) return missing("persons", "a usable list of people");
+
+      const personId = uuid(row, "personId");
+      if (!personId) return missing("persons", "a valid person on the incident");
+
+      const involvement = oneOf(row, "involvement", INCIDENT_INVOLVEMENTS);
+      if (!involvement) {
+        return missing("persons", "how each person was involved");
+      }
+
+      /* The join's primary key is (incident_id, person_id), so a duplicated
+         person would make the transaction fail on its own second insert. Caught
+         here as a sentence rather than surfacing as a constraint name, and
+         de-duplicated rather than refused: a person listed twice is a double tap
+         on a tablet, not a disagreement about what happened. */
+      if (seen.has(personId)) continue;
+      seen.add(personId);
+
+      persons.push({ incidentId: request.id, personId, involvement });
+    }
+
+    return {
+      ok: true,
+      write: {
+        kind: "incident",
+        write: {
+          incident: {
+            id: request.id,
+            sessionId,
+            category,
+            narrative,
+            occurredAt,
+            reportedByStaffId: request.actorStaffId,
+            followUpStatus,
+            deviceId: request.deviceId,
+          },
+          persons,
         },
       },
     };
@@ -538,7 +732,7 @@ const parsers: Record<PushOperation, Parser> = {
 
     return {
       ok: true,
-      row: {
+      write: { kind: "insert", row: {
         target: "auditLog",
         values: {
           id: request.id,
@@ -553,7 +747,7 @@ const parsers: Record<PushOperation, Parser> = {
           overrideReason,
           occurredAt,
         },
-      },
+      } },
     };
   },
 };

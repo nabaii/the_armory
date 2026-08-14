@@ -104,6 +104,12 @@ export const routes = {
   portal: "/portal",
   /** §6.2 "Book a session" and "Invite a guest", which are one intention. */
   portalBook: "/portal/book",
+  /** §6.2 "My shooting" — history, personal best, trend. Standings are Phase 2. */
+  portalShooting: "/portal/shooting",
+  /** §6.2 "My documents" — waiver, licence, owned firearm registrations. */
+  portalDocuments: "/portal/documents",
+  /** §6.2 "Account" — charges, payments, balance, renewal, tier privileges. */
+  portalAccount: "/portal/account",
   leagueNew: "/portal/leagues/new",
   leagueJoin: "/portal/leagues/join",
   /** A specific league. Private — the repository scopes reads by membership. */

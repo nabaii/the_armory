@@ -137,6 +137,7 @@ function pack(overrides: Partial<DayPack> = {}): DayPack {
 
     firearms: [],
     ammunitionLots: [],
+    lanes: [],
     staff: [],
     devices: [],
     ...overrides,

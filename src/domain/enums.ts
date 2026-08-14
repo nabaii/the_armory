@@ -119,6 +119,51 @@ export type SessionStatus = (typeof SESSION_STATUSES)[number];
 export const CAPTURE_METHODS = ["manual", "electronic"] as const;
 export type CaptureMethod = (typeof CAPTURE_METHODS)[number];
 
+/**
+ * §3.3's `incidents.category`.
+ *
+ * The column is `text`, not a Postgres enum, and that is deliberate rather than
+ * an omission — §14 leaves the regulatory and licensing obligation open, and a
+ * reporting category the regulator turns out to require is a migration if the
+ * vocabulary is in the database and a deploy if it is here. Everything that
+ * WRITES an incident narrows against this list, so the column is as constrained
+ * in practice as an enum would be, and is cheaper to widen.
+ *
+ * `other` exists and is last on purpose. A fixed list with no escape hatch does
+ * not produce cleaner data; it produces incidents filed under the nearest wrong
+ * category, or not filed at all — and §6.5 puts the incident button one tap from
+ * everywhere precisely because the cost of not recording one is unbounded.
+ */
+export const INCIDENT_CATEGORIES = [
+  /** A shot nobody intended. The one every range fears and must record. */
+  "negligent_discharge",
+  /** Muzzle discipline, a breach of the line, shooting out of sequence. */
+  "safety_breach",
+  "injury",
+  "equipment_fault",
+  "property_damage",
+  /** Conduct: intoxication, refusal of an instruction, a dispute. */
+  "conduct",
+  "other",
+] as const;
+export type IncidentCategory = (typeof INCIDENT_CATEGORIES)[number];
+
+/**
+ * How a person is attached to an incident — §3.3's `incident_persons.involvement`.
+ *
+ * `witness` is on the list for a reason worth stating: an incident with nobody
+ * but the subject recorded against it is the version that is hardest to stand
+ * behind afterwards, and the people who saw it are on the premises for another
+ * ten minutes and then gone.
+ */
+export const INCIDENT_INVOLVEMENTS = [
+  "involved",
+  "witness",
+  "injured",
+  "reported",
+] as const;
+export type IncidentInvolvement = (typeof INCIDENT_INVOLVEMENTS)[number];
+
 /* ---------------------------------------------------------------------------
    PROPERTY — §3.4
    -------------------------------------------------------------------------- */

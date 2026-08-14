@@ -53,12 +53,18 @@ export function Today({
   canRunSession,
   onCheckIn,
   onOpen,
+  onIssue,
+  onSignWaiver,
 }: {
   rows: readonly ArrivalRow[];
   canRunSession: boolean;
   onCheckIn: (personId: string) => void;
   /** §6.4: open Person detail. Never on the path to a check-in. */
   onOpen: (personId: string) => void;
+  /** §6.4's Issue equipment. Only reachable once somebody is on the premises. */
+  onIssue: (personId: string) => void;
+  /** §3.1's waiver, taken at the desk. Offered only where it clears the row. */
+  onSignWaiver: (personId: string) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -143,7 +149,49 @@ export function Today({
           </button>
 
           {row.checkedIn ? (
-            <span className="shrink-0 text-sm text-[--color-sight-ink]">In</span>
+            /**
+             * §6.4: "Issue equipment — firearm by serial and ammunition by
+             * quantity, written as custody and ammunition rows AGAINST THE
+             * PARTICIPATION."
+             *
+             * Against the participation is why this appears only once they are
+             * checked in: there is no participation to write against before
+             * that, and §3.3 makes the column NOT NULL. An issue button on a
+             * row that has not arrived would be a button that cannot work.
+             */
+            <button
+              type="button"
+              onClick={() => onIssue(row.personId)}
+              className="shrink-0 rounded border border-[--color-reticle-black] px-3 py-2 text-sm font-medium"
+            >
+              Issue
+            </button>
+          ) : row.needsWaiver ? (
+            /**
+             * §3.1's waiver, and the one action that changes a `blocked` row.
+             *
+             * A waiver block is not overridable — reasons.ts: "the waiver is the
+             * club's legal position if someone is injured on a live range" — so
+             * the check-in button below is disabled for these rows and always
+             * was. Until this existed the row was a dead end: an unwaivable block
+             * whose stated remedy is "at the desk when you arrive", on a desk
+             * that could not take one.
+             *
+             * It replaces the check-in button rather than sitting beside it,
+             * because there is exactly one thing to do here and a disabled
+             * control next to an enabled one is a question the officer has to
+             * answer at the busiest moment of the evening. Signing re-evaluates
+             * the row (§12.1's mechanism), and the check-in button comes back by
+             * itself.
+             */
+            <button
+              type="button"
+              onClick={() => onSignWaiver(row.personId)}
+              disabled={!canRunSession}
+              className="shrink-0 rounded border border-[--color-reticle-black] px-3 py-2 text-sm font-medium disabled:border-[--color-sight-grey] disabled:text-[--color-sight-grey]"
+            >
+              Sign waiver
+            </button>
           ) : (
             /**
              * §6.4: "Three taps maximum from Today to checked in with a lane
