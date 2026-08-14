@@ -427,7 +427,15 @@ export async function unlockOfficer(
   deviceToken: string,
   input: { staffUserId: string; pin: string },
   fetchImpl: typeof fetch = fetch,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
+): Promise<
+  | {
+      ok: true;
+      /** §6.6's dashboard read. See `sessionToken` in src/offline/officer.ts. */
+      token: string | null;
+      expiresAt: Date | null;
+    }
+  | { ok: false; reason: string }
+> {
   let response: Response;
 
   try {
@@ -453,7 +461,33 @@ export async function unlockOfficer(
     };
   }
 
-  if (response.ok) return { ok: true };
+  if (response.ok) {
+    /**
+     * The unlock returns a staff session and this is where it stops being
+     * discarded.
+     *
+     * It was dropped through M5 because nothing needed it: every desk write
+     * authenticates with the DEVICE token and carries the officer as data.
+     * §6.6's dashboard is the first surface that READS as a named person, and
+     * its endpoint refuses anything else.
+     *
+     * A body that cannot be read is not an unlock failure — the server said
+     * yes, and the shift is what actually gates the desk. So the session is
+     * null and the dashboard says to sign in again; the officer still works.
+     */
+    const body = (await response.json().catch(() => null)) as {
+      token?: unknown;
+      expiresAt?: unknown;
+    } | null;
+
+    const token = typeof body?.token === "string" ? body.token : null;
+    const expiresAt =
+      typeof body?.expiresAt === "string" && !Number.isNaN(Date.parse(body.expiresAt))
+        ? new Date(body.expiresAt)
+        : null;
+
+    return { ok: true, token, expiresAt };
+  }
 
   return { ok: false, reason: await reason(response) };
 }

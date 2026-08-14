@@ -7,6 +7,8 @@ import {
   invitationTransition,
   type InvitationEvent,
 } from "@/domain/state-machines";
+import { guestOverageCharge } from "@/domain/charges";
+import { kobo, type Kobo } from "@/lib/money";
 import { uuidv7 } from "@/lib/uuidv7";
 import { hashDeviceToken } from "@/server/sync/device-auth";
 import {
@@ -15,6 +17,7 @@ import {
   overageException,
   releaseAllowance,
 } from "./allowances";
+import { raiseCharge } from "./money";
 import { applied, refused, type AuditDraft, type Written } from "./record";
 
 /**
@@ -215,6 +218,11 @@ export async function applyInvitationEvent(
       hostMembershipId: schema.guestInvitations.hostMembershipId,
       status: schema.guestInvitations.status,
       expiresAt: schema.guestInvitations.expiresAt,
+      /* §11 M8's host-pays enforcement reads both. Selected here rather than in
+         a second query because the charge is raised inside this transaction and
+         a re-read would be a second chance for the two to disagree. */
+      isChargeable: schema.guestInvitations.isChargeable,
+      guestPersonId: schema.guestInvitations.guestPersonId,
     })
     .from(schema.guestInvitations)
     .where(eq(schema.guestInvitations.id, input.invitationId))
@@ -263,6 +271,78 @@ export async function applyInvitationEvent(
     }
   }
 
+  const audit: AuditDraft[] = [
+    {
+      action: `invitation.${input.event.type}`,
+      entityType: "guest_invitation",
+      entityId: invitation.id,
+      before: { status: invitation.status },
+      after: { status: transition.to, allowanceReturned },
+    },
+  ];
+
+  /**
+   * §11 M8's "host-pays enforcement", at the one moment it is correct.
+   *
+   * ===========================================================================
+   * WHY THE CHARGE IS RAISED ON ATTENDANCE AND NOT ON ISSUE
+   *
+   * The allowance moves when the invitation is issued (§3.2), and the obvious
+   * reading is that the charge should move with it. It should not, and the
+   * reason is in §5: "issued | opened | completed → cancelled (RETURNS
+   * ALLOWANCE)".
+   *
+   * A charge raised at issue would therefore have to be reversed on every
+   * cancellation, and a member's statement would fill with charges and credits
+   * for guests who never came — the club billing and un-billing somebody for a
+   * Saturday that did not happen. The first time a member queries one of those,
+   * the club is explaining its own bookkeeping instead of taking a booking.
+   *
+   * `attended` is terminal and returns nothing (§5), so a charge raised here
+   * never needs reversing. It is also the moment §8.3 describes: "the visit
+   * stands — the guest is already on the premises — and the overage is charged
+   * to the host."
+   *
+   * ===========================================================================
+   * THE PRICE IS CONFIGURATION, AND ITS ABSENCE IS NOT A FAILURE
+   *
+   * §14 lists the guest overage price as open, and explicitly not blocking:
+   * "Configurable, so not structurally blocking." Until it is set there is no
+   * price to charge, and this raises nothing rather than guessing one.
+   *
+   * The visit is not refused for it and the audit entry is already written by
+   * `issueInvitation` — so a club that opens before the price is set has a
+   * complete record of who owes for what, and can raise the charges when the
+   * number lands. Blocking a guest at the door over an unset configuration
+   * value would be this system doing exactly what §1.2 rule 5 forbids.
+   */
+  if (transition.to === "attended" && invitation.isChargeable) {
+    const price = await overagePriceKobo(tx);
+
+    if (price !== null) {
+      const guestName = await nameOf(tx, invitation.guestPersonId);
+      const hostPersonId = await hostPersonOf(tx, invitation.hostMembershipId);
+
+      if (hostPersonId) {
+        const charge = await raiseCharge(
+          tx,
+          guestOverageCharge({
+            /* §3.5, §1.2 rule 5. The HOST. `guestOverageCharge` has no
+               parameter that could carry the guest's person id — the guest's
+               NAME is all it takes, and only so the line reads. */
+            hostPersonId,
+            guestName,
+            invitationId: invitation.id,
+            visits: 1,
+            priceKobo: price,
+          }),
+        );
+
+        audit.push(...charge.audit);
+      }
+    }
+  }
+
   return applied(
     {
       invitationId: invitation.id,
@@ -270,16 +350,63 @@ export async function applyInvitationEvent(
       to: transition.to,
       allowanceReturned,
     },
-    [
-      {
-        action: `invitation.${input.event.type}`,
-        entityType: "guest_invitation",
-        entityId: invitation.id,
-        before: { status: invitation.status },
-        after: { status: transition.to, allowanceReturned },
-      },
-    ],
+    audit,
   );
+}
+
+/**
+ * The club's guest overage price, or null while §14 leaves it unset.
+ *
+ * Read from the club settings row rather than a constant, because §14 makes it
+ * "configurable, so not structurally blocking" — a price in code is a price
+ * that needs a deploy on the afternoon the founder decides.
+ */
+async function overagePriceKobo(tx: ArmoryTx): Promise<Kobo | null> {
+  const [row] = await tx
+    .select({ guestOveragePriceKobo: schema.clubSettings.guestOveragePriceKobo })
+    .from(schema.clubSettings)
+    .limit(1);
+
+  return row?.guestOveragePriceKobo ? kobo(row.guestOveragePriceKobo) : null;
+}
+
+/** Who holds the membership. §3.1 — a membership belongs to one person. */
+async function hostPersonOf(
+  tx: ArmoryTx,
+  membershipId: string,
+): Promise<string | null> {
+  const [row] = await tx
+    .select({ personId: schema.memberships.personId })
+    .from(schema.memberships)
+    .where(eq(schema.memberships.id, membershipId))
+    .limit(1);
+
+  return row?.personId ?? null;
+}
+
+/**
+ * A guest's name for the charge line, or a usable stand-in.
+ *
+ * A completed invitation always has a guest person (§3.2's flow creates one),
+ * and a desk override may not. "A guest" on a statement is poor; a statement
+ * that failed to render because a name was missing is worse.
+ */
+async function nameOf(
+  tx: ArmoryTx,
+  personId: string | null,
+): Promise<string> {
+  if (!personId) return "a guest";
+
+  const [row] = await tx
+    .select({
+      firstName: schema.people.firstName,
+      lastName: schema.people.lastName,
+    })
+    .from(schema.people)
+    .where(eq(schema.people.id, personId))
+    .limit(1);
+
+  return row ? `${row.firstName} ${row.lastName}` : "a guest";
 }
 
 /** Which timestamp column an event stamps. §3.2 keeps one per state. */

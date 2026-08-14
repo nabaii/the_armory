@@ -89,6 +89,32 @@ export type OfficerShift = {
   readonly expiresAt: Date;
   /** Consecutive wrong PINs since the last success. */
   readonly failedAttempts: number;
+  /**
+   * The staff session bearer token from the online unlock, or null.
+   *
+   * ===========================================================================
+   * WHY A TOKEN IS KEPT AT ALL, AND WHAT IT COSTS
+   *
+   * Everything the desk writes goes through the OUTBOX, which authenticates
+   * with the DEVICE token and carries `actorStaffId` as data — so no desk
+   * workflow needs this. It exists for the one surface that reads rather than
+   * writes: §6.6's owner dashboard, whose endpoint requires a founder session
+   * because it returns revenue and every override any officer made this week.
+   *
+   * The cost is a bearer credential at rest on a tablet. Three things bound it:
+   * it lives in `armory-device`, which §10's revocation destroys; it expires
+   * with the server session rather than with the shift; and it is null on every
+   * offline unlock, because an offline unlock never spoke to the server and
+   * inventing one would be minting a session nobody issued.
+   *
+   * A range officer's token is kept too, and buys nothing — /api/dashboard
+   * refuses it. That is deliberate: branching on role here would mean the
+   * client deciding who is a founder, and §4's rule is that no screen makes its
+   * own permission decision. The server decides, every time.
+   */
+  readonly sessionToken: string | null;
+  /** When the SERVER session lapses. Distinct from the shift's own expiry. */
+  readonly sessionExpiresAt: Date | null;
 };
 
 /* ============================================================================
@@ -139,6 +165,9 @@ export async function beginShift(input: {
   readonly role: string;
   readonly pin: string;
   readonly now: Date;
+  /** From the unlock response. See the note on `sessionToken`. */
+  readonly sessionToken?: string | null;
+  readonly sessionExpiresAt?: Date | null;
 }): Promise<OfficerShift> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
 
@@ -151,8 +180,28 @@ export async function beginShift(input: {
     unlockedAt: input.now,
     expiresAt: new Date(input.now.getTime() + SHIFT_HOURS * 3_600_000),
     failedAttempts: 0,
+    sessionToken: input.sessionToken ?? null,
+    sessionExpiresAt: input.sessionExpiresAt ?? null,
   };
 }
+
+/**
+ * The staff token to send with a read, or null.
+ *
+ * Null once the SERVER session has lapsed, which happens before the shift does
+ * — the shift lasts twelve hours and a staff session need not. Sending an
+ * expired token would produce a 401 the officer cannot act on; returning null
+ * lets the caller say "sign in again while there is a connection", which is
+ * what actually fixes it.
+ */
+export const staffTokenFor = (
+  shift: OfficerShift | null,
+  now: Date,
+): string | null => {
+  if (!shift?.sessionToken) return null;
+  if (shift.sessionExpiresAt && now >= shift.sessionExpiresAt) return null;
+  return shift.sessionToken;
+};
 
 /* ============================================================================
    THE LOCAL UNLOCK

@@ -609,7 +609,7 @@ function licenceBlock(
      licences moving to `expired` "by date"; a sweep job sets the column and
      the date is what is true in between. */
   const unexpired = verified.filter(
-    (l) => l.expiresOn === null || l.expiresOn.getTime() > now.getTime(),
+    (l) => l.expiresOn === null || liveOn(l.expiresOn, now),
   );
 
   if (unexpired.length === 0) {
@@ -622,6 +622,42 @@ function licenceBlock(
   const covering = unexpired.some((l) => l.calibres.includes(calibre));
   return covering ? null : reason.calibreOutsideLicence(calibre);
 }
+
+/** One Lagos day, in milliseconds. §2 makes the offset fixed all year. */
+const LAGOS_DAY_MS = 86_400_000;
+
+/**
+ * Is a licence still live on the day it expires?
+ *
+ * ===========================================================================
+ * A DATE COLUMN IS A DAY, NOT AN INSTANT — AND THIS WAS WRONG
+ *
+ * `licences.expires_on` is a DATE (§3.1), and both sides of this system parse
+ * it with `parseDateColumn`, which yields MIDNIGHT IN LAGOS at the START of
+ * that day. Comparing `expiresOn > now` therefore made a licence expire at the
+ * beginning of its expiry date rather than the end of it — a member holding a
+ * licence marked "expires 14 August" was refused all day on the 14th.
+ *
+ * The server never agreed. `expireLapsedLicences` in
+ * src/server/armory/licences.ts sweeps with `expires_on < today`, so a licence
+ * expiring today stays `verified` in the database. So the column said valid,
+ * the sweep said valid, and the capability service — the one thing §4 makes
+ * authoritative for both the desk and the portal — said no.
+ *
+ * That divergence is the exact shape §2.1 predicts: "most defects in this
+ * system only appear at volume or AT A PERIOD BOUNDARY". It is invisible on
+ * every other day of a licence's life, and it surfaces on one specific morning,
+ * at the desk, to a member whose paperwork is in order. §12.1 plants "a licence
+ * that expired yesterday, ONE EXPIRING TODAY" in the seed as two distinct
+ * cases, and under the old comparison they behaved identically.
+ *
+ * A licence is therefore live until the end of its expiry day in Lagos — one
+ * whole day after the instant the column parses to. Written as an addition
+ * rather than by re-deriving the Lagos day, because `parseDateColumn` has
+ * already done that conversion and doing it twice is how the two drift.
+ */
+const liveOn = (expiresOn: Date, now: Date): boolean =>
+  now.getTime() < expiresOn.getTime() + LAGOS_DAY_MS;
 
 /* ---------------------------------------------------------------------------
    MAY_STORE_FIREARM — §13: tables built, workflow behind a flag.

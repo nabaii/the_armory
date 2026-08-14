@@ -64,7 +64,12 @@ export function OfficerUnlock({
   onSignedIn: (input: {
     staffUserId: string;
     pin: string;
-  }) => Promise<{ ok: true } | { ok: false; reason: string }>;
+  }) => Promise<
+    /* The staff session, so §6.6's dashboard read has a credential. Null when
+       the server answered without one — see `sessionToken` in officer.ts. */
+    | { ok: true; token: string | null; expiresAt: Date | null }
+    | { ok: false; reason: string }
+  >;
   onShiftChanged: (shift: OfficerShift | null) => Promise<void>;
 }) {
   /* An officer whose account has been deactivated must not be offered. The pack
@@ -120,6 +125,10 @@ export function OfficerUnlock({
             role: member?.role ?? "range_officer",
             pin,
             now: new Date(),
+            /* Carried from the unlock response. Null on an offline unlock,
+               which never spoke to a server — see `sessionToken`. */
+            sessionToken: result.token,
+            sessionExpiresAt: result.expiresAt,
           }),
         );
         return;

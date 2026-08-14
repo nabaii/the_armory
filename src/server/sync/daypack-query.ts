@@ -67,6 +67,21 @@ const instantOrNull = (column: unknown) =>
   sql<InstantString | null>`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
 
 /**
+ * A `jsonb` list of discipline slugs, or the permissive empty list.
+ *
+ * Anything unreadable becomes empty rather than throwing. The alternative is
+ * worse than it looks: this value reaches MAY_SHOOT_DISCIPLINE on every tablet,
+ * so a malformed row would either close the whole range or crash the endpoint
+ * every device pulls from. Failing open here is the same choice `waiverValidityDays`
+ * makes, for the same stated reason — turning members away over a rule nobody
+ * set is the wrong way to be wrong.
+ */
+const asDisciplineList = (value: unknown): readonly string[] =>
+  Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+
+/**
  * Assemble everything one pack is built from.
  *
  * `now` is a parameter because the window depends on it, and because a test that
@@ -409,6 +424,29 @@ export async function loadDayPackSource(now: Date): Promise<DayPackSource> {
       })
       .from(schema.devices);
 
+    /**
+     * §14's open items, read from the club's own row (drizzle/0006).
+     *
+     * These were three literals here, each with a comment explaining that the
+     * DEVICE reads them from the pack "so it changes without a deploy". The
+     * device did; the server did not, and the sentence was therefore only half
+     * true. Now both read a row.
+     *
+     * Absent settings fall back to the same undecided positions the literals
+     * held, so a database that has not run 0006 behaves exactly as before —
+     * which matters because this query is on the path every tablet takes to
+     * open, and a missing settings row must not close the range.
+     */
+    const [settings] = await tx
+      .select({
+        waiverValidityDays: schema.clubSettings.waiverValidityDays,
+        storageEnabled: schema.clubSettings.storageEnabled,
+        disciplinesRequiringQualification:
+          schema.clubSettings.disciplinesRequiringQualification,
+      })
+      .from(schema.clubSettings)
+      .limit(1);
+
     return {
       pulledAt: now,
       windowStart: windowStart as DateString,
@@ -423,16 +461,25 @@ export async function loadDayPackSource(now: Date): Promise<DayPackSource> {
        * version never expires, which is what the capability service already
        * implements for null — and the right way to be wrong, because the alternative
        * turns members away at the door over a rule nobody set.
+       *
+       * `?? null` rather than a default: an unset column and a missing settings
+       * row must reach the same undecided position, so a club that has not made
+       * this decision behaves identically whichever way it has not made it.
        */
-      waiverValidityDays: null,
-      /** §13: the storage workflow sits behind a flag pending the §14 decision. */
-      storageEnabled: false,
+      waiverValidityDays: settings?.waiverValidityDays ?? null,
+      /** §13: the storage workflow sits behind a flag, off until the club turns it on. */
+      storageEnabled: settings?.storageEnabled ?? false,
       /**
        * §14 blocks the real list on the club's competency policy. Empty means no
-       * discipline demands a sign-off, which is the permissive answer. Read from the
-       * pack rather than hard-coded on the device so it changes without a deploy.
+       * discipline demands a sign-off, which is the permissive answer.
+       *
+       * The column is `jsonb` and arrives as `unknown`. Narrowed rather than cast,
+       * because a malformed value here would make MAY_SHOOT_DISCIPLINE refuse
+       * every discipline on every tablet — a club-wide outage from one bad row.
        */
-      disciplinesRequiringQualification: [],
+      disciplinesRequiringQualification: asDisciplineList(
+        settings?.disciplinesRequiringQualification,
+      ),
 
       people,
       memberships,

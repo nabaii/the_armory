@@ -195,7 +195,8 @@ The replay path is unit-tested over every operation
 | 7 | Guest cleared without a reload | pass / fail | §12.1 |
 | 9 | Waiver cleared the block without a reload | pass / fail | §3.1 |
 | 9 | Signature image held on the tablet | held / lost | see the note below |
-| 17 | Records present after the cut | \_\_ / \_\_ | count what steps 5–11 produced |
+| 12 | Two scores recorded at the lane | \_\_\_ s each | budget 20 s (§6.5) |
+| 17 | Records present after the cut | \_\_ / \_\_ | count what steps 5–12 produced |
 | 17 | Presence survived the reboot | pass / fail | read from `armory-session` |
 | 22 | Queue drained in | \_\_\_ s | |
 | 23 | Rows on the server | exactly once / duplicated | §7 |
@@ -213,7 +214,7 @@ Signed: \_\_\_\_\_\_\_\_\_\_\_\_\_\_ Date: \_\_\_\_\_\_\_\_ Tablet model: \_\_\_
 Recorded here so they are not discovered as surprises mid-test, and so nobody
 records a pass against a step the build does not yet support.
 
-- **Steps 5–11 are built. Step 12 is not.**
+- **~~Steps 5–11 are built. Step 12 is not.~~ Closed at M7. The whole protocol runs.**
 
   Check-in is complete and durable: it writes a participation to `armory-session`
   and queues `participations.checkin` plus an `audit_log.create` through the outbox
@@ -223,8 +224,23 @@ records a pass against a step the build does not yet support.
   **Updated at M5.** Equipment issue now has an originating layer —
   `src/offline/equipment.ts` builds the `custody_events.create` and
   `ammunition_issues.create` writes that §6.4 requires to work offline, so steps
-  10 and 11 can be performed. **Score capture (step 12) remains M7**; its write is
-  defined and replay-tested but nothing originates it.
+  10 and 11 can be performed.
+
+  **Closed at M7.** Step 12 is built. `src/offline/score.ts` builds the
+  `rounds.create` write, `src/components/console/ScoreSheet.tsx` takes the total
+  on a keypad that never raises the system keyboard, and the card is written to
+  `armory-session` before it is queued — the same order, for the same reason, as
+  a check-in and a signature.
+
+  **Step 12 is performed on the LANE tablet, not the desk.** §6.5 puts scoring
+  on the lane surface, and the device's registration decides which surface it
+  shows. If the protocol is being run on one tablet, register it as `lane` for
+  steps 8 and 12 and as `desk` for the rest — or run it on two, which is what the
+  club will actually have.
+
+  **What to check on this run:** that the two scores are still on the relay after
+  the reboot at step 16, read from `armory-session` and not from the server; and
+  at step 23, that `armory.rounds` holds exactly two rows for them.
 
   **Corrected.** The M5 edit above moved this heading from "steps 5–8" to "steps
   5–11" on the strength of the equipment work alone, which quietly claimed **step
@@ -232,9 +248,10 @@ records a pass against a step the build does not yet support.
   `waiver_signatures.create`. It is built now — see the next entry — and the
   heading is true as it stands.
 
-  What **can** be run today: sections 1 and 2 as far as step 11, the power cut at
-  step 14, step 17, section 5 in full, section 6, and sections 7 and 8 in full.
-  Step 12 is recorded as skipped, not omitted.
+  **The whole protocol can now be run.** Sections 1 to 8, every step, with no
+  step recorded as skipped — which was not true of any earlier revision of this
+  document and is the reason to re-read the recording sheet rather than the
+  headings.
 
 - **~~The waiver cannot be signed at the desk.~~ Closed.**
 
@@ -314,10 +331,27 @@ records a pass against a step the build does not yet support.
   writes a non-null `lane_id`, and that a lane under maintenance is shown and
   refused rather than hidden.
 
-- **Incidents cannot be recorded offline yet.** §6.5 requires it. An incident is two
-  tables and the HTTP driver has no multi-statement transactions, so writing it
-  idempotently needs a single CTE statement — deferred to M7 with the lane surface
-  rather than shipped half-done. See the note in `src/sync/contract.ts`.
+- **~~Incidents cannot be recorded offline yet.~~ Closed at M7.**
+
+  §6.5 requires it, and the earlier note here was wrong about the obstacle: it
+  said the write "needs a single CTE statement" because "the HTTP driver has no
+  multi-statement transactions". That is true of the LEAGUES driver. The
+  management system holds a pooled TCP connection with real transactions
+  (`src/db/armory/client.ts`), which exists for §8.3's allowance write, and
+  `incidents.create` uses it — both inserts, each `ON CONFLICT DO NOTHING`,
+  committed together.
+
+  `src/offline/incident.ts` builds the record and
+  `src/components/console/IncidentSheet.tsx` takes it. The button is in the lane
+  header on every screen of that surface, which is §6.5's "never more than one
+  tap away", and the builder refuses on exactly two things — a category and an
+  account of what happened. Everything else it would have insisted on is a way
+  for a safety record not to exist.
+
+  **Worth adding to the run**, though §8.5 does not ask for it: record an
+  incident before the power cut and confirm it is still there afterwards. It is
+  the one record on this list that exists because something went wrong, and it is
+  the one nobody would think to check twice.
 
 - **Sessions cannot be opened offline.** A check-in belongs to a session, and
   `sessions` is in neither of §8.2's two classes, so it has no offline strategy yet.
@@ -331,6 +365,14 @@ records a pass against a step the build does not yet support.
   but the SQL itself is unverified. The first item to check is that every
   `AS "camelCase"` alias in `src/server/sync/daypack-query.ts` matches
   `src/server/rows.ts` — a mismatch shows up as an undefined field on the desk.
+
+  **Two queries were added after that note and carry the same warning:** the
+  `participations` projection (M7, so a lane tablet can see who the desk checked
+  in) and the `club_settings` read (M8, so §14's values come from a row rather
+  than a literal). Both are unverified SQL. A settings row that fails to read
+  falls back to the undecided position and the range still opens, which is
+  deliberate — but confirm on the first sync that the desk's day pack carries a
+  non-empty `participations` array once somebody is checked in.
 
   The same applies to `scripts/seed.ts`: its inserts are typed against the same DDL
   and have never executed. Run it before the protocol, not during it.

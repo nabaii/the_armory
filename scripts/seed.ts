@@ -969,6 +969,196 @@ async function seed() {
     await insert(schema.custodyEvents, custodyRows),
   );
 
+  /* ------------------------------------------------------- CLUB SETTINGS
+     §14's open items, in the row drizzle/0006 created (M8).
+
+     The guest overage price is SET here and the roster cap is set here, because
+     staging is where those two need to be exercised: without a price no overage
+     charge is ever raised, and without a cap §6.6's roster panel has nothing to
+     count against and M3's admission guard is never tested.
+
+     They are staging values, not the club's decision. Production runs the
+     migration's row, where both are null until a founder sets them — see the
+     note on `club_settings` in src/db/armory/schema.ts about why null means
+     "not decided" rather than a default. */
+  step(
+    "club settings (§14 values, staging figures)",
+    await insert(schema.clubSettings, [
+      {
+        id: uuidv7At(midnight.getTime() - 400 * DAY),
+        singleton: true,
+        guestOveragePriceKobo: 1_500_000,
+        rosterCap: 120,
+        waiverValidityDays: null,
+        storageEnabled: false,
+        disciplinesRequiringQualification: [],
+      },
+    ]),
+  );
+
+  /* ----------------------------------------------------------------- MONEY
+     §3.5, §11 M8, and §6.6's "revenue by source".
+
+     Enough for the Account screen and the dashboard's revenue panel to hold
+     something真 real, with the two states that matter placed by hand:
+
+       · member 0 has an UNSETTLED guest-visit charge and a balance that covers
+         it, so §6.2's "settle from balance" path has something to settle.
+       · member 1 has a settled subscription, so the statement shows a payment
+         landing and a charge closing — the pair §6.2 asks for.
+
+     Ledger entries are written and `accounts.balance_kobo` is NOT: §3.5 makes
+     it derived and drizzle/0002 rejects a direct write. The trigger fills it in
+     as these rows land, which is also a live check that the trigger is
+     installed on whatever database this ran against. */
+  const activeMembers = members.slice(0, 40);
+
+  const accountRows = activeMembers.map((person, i) => ({
+    id: uuidv7At(midnight.getTime() - (200 - i) * DAY),
+    personId: person.id,
+    balanceKobo: 0,
+  }));
+
+  const chargeRows: InferInsertModel<typeof schema.charges>[] = [];
+  const paymentRows: InferInsertModel<typeof schema.payments>[] = [];
+  const ledgerRows: InferInsertModel<typeof schema.accountTransactions>[] = [];
+
+  activeMembers.forEach((person, i) => {
+    const accountId = accountRows[i].id;
+    const daysAgo = 5 + (i % 80);
+
+    /* An annual subscription for everybody, settled for all but member 0's
+       guest charge below. Amounts vary by tier index so the revenue panel is
+       not one flat number. */
+    const subscriptionKobo = 30_000_000 + (i % 6) * 5_000_000;
+    const chargeId = uuidv7At(midnight.getTime() - daysAgo * DAY);
+    const paymentId = uuidv7At(midnight.getTime() - daysAgo * DAY + 1000);
+
+    chargeRows.push({
+      id: chargeId,
+      payerPersonId: person.id,
+      referenceType: "membership",
+      referenceId: memberships[i].id,
+      lineItems: [
+        {
+          description: `Membership, year to ${dateKey(dayOffset(365 - daysAgo))}`,
+          quantity: 1,
+          unitKobo: subscriptionKobo,
+          amountKobo: subscriptionKobo,
+        },
+      ],
+      totalKobo: subscriptionKobo,
+      isSettled: true,
+      settledPaymentId: paymentId,
+    });
+
+    paymentRows.push({
+      id: paymentId,
+      personId: person.id,
+      amountKobo: subscriptionKobo,
+      purpose: "subscription",
+      method: "card",
+      gateway: "paystack",
+      /* Unique per payment — §3.5's index, and §12.1's duplicate-webhook test
+         depends on it being the idempotency key rather than decoration. */
+      gatewayReference: `seed_sub_${i}`,
+      status: "succeeded",
+      paidAt: dayOffset(-daysAgo),
+    });
+
+    ledgerRows.push(
+      {
+        id: uuidv7At(midnight.getTime() - daysAgo * DAY + 2000),
+        accountId,
+        amountKobo: subscriptionKobo,
+        direction: "credit",
+        referenceType: "payment.subscription",
+        referenceId: paymentId,
+      },
+      {
+        id: uuidv7At(midnight.getTime() - daysAgo * DAY + 3000),
+        accountId,
+        amountKobo: subscriptionKobo,
+        direction: "debit",
+        referenceType: "charge.membership",
+        referenceId: chargeId,
+      },
+    );
+  });
+
+  /* §12.1's "allowance exhausted" case, on the money side: an outstanding
+     guest-visit charge with a balance that covers it. Member 0 is the one every
+     demo opens. */
+  const overageChargeId = uuidv7At(midnight.getTime() - 2 * DAY);
+  const topUpId = uuidv7At(midnight.getTime() - 3 * DAY);
+
+  chargeRows.push({
+    id: overageChargeId,
+    payerPersonId: members[0].id,
+    referenceType: "guest_visit",
+    referenceId: null,
+    /* §1.2 rule 5: the HOST pays. The payer above is the member, and the guest
+       is named only in the description. */
+    lineItems: [
+      {
+        description: `Guest visit — ${guests[0].first} ${guests[0].last}`,
+        quantity: 1,
+        unitKobo: 1_500_000,
+        amountKobo: 1_500_000,
+      },
+    ],
+    totalKobo: 1_500_000,
+    isSettled: false,
+    settledPaymentId: null,
+  });
+
+  paymentRows.push({
+    id: topUpId,
+    personId: members[0].id,
+    amountKobo: 5_000_000,
+    purpose: "account_topup",
+    method: "bank_transfer",
+    gateway: "paystack",
+    gatewayReference: "seed_topup_0",
+    status: "succeeded",
+    paidAt: dayOffset(-3),
+  });
+
+  ledgerRows.push({
+    id: uuidv7At(midnight.getTime() - 3 * DAY + 4000),
+    accountId: accountRows[0].id,
+    amountKobo: 5_000_000,
+    direction: "credit",
+    referenceType: "payment.account_topup",
+    referenceId: topUpId,
+  });
+
+  /* §9's reconciliation job needs something to find: a payment the club started
+     and never heard the end of. Left `pending` with no `paid_at`, which is
+     exactly what a lost webhook looks like. */
+  paymentRows.push({
+    id: uuidv7At(midnight.getTime() - 4 * DAY),
+    personId: members[1].id,
+    amountKobo: 3_000_000,
+    purpose: "subscription",
+    method: null,
+    gateway: "paystack",
+    gatewayReference: "seed_lost_webhook_1",
+    status: "pending",
+    paidAt: null,
+  });
+
+  step("accounts", await insert(schema.accounts, accountRows));
+  step("charges (one outstanding — §6.2)", await insert(schema.charges, chargeRows));
+  step(
+    "payments (one pending — §9's reconciliation)",
+    await insert(schema.payments, paymentRows),
+  );
+  step(
+    "ledger entries (balances derive by trigger)",
+    await insert(schema.accountTransactions, ledgerRows),
+  );
+
   /* -------------------------------------------------------------- DEVICES
      §3.1 and §10. Two devices with real tokens, printed once — this is what lets a
      tablet be enrolled and the §8.5 protocol run.

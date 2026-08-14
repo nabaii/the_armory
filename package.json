@@ -12,6 +12,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "gate": "tsx scripts/gate.ts",
+    "volume": "tsx scripts/volume.ts",
     "gate:launch": "tsx scripts/gate.ts --launch",
     "audit": "tsx scripts/audit.ts",
     "responsive": "tsx scripts/responsive.ts",
@@ -22,7 +23,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
     "db:prove": "node --env-file-if-exists=.env.local --import tsx scripts/prove.ts",
-    "verify": "npm run typecheck && npm run lint && npm run test && npm run gate",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run gate && npm run volume",
     "verify:full": "npm run verify && npm run build && npm run audit"
   },
   "dependencies": {

@@ -26,7 +26,12 @@ import { subjectFor, type IndexedDayPack } from "@/offline/daypack";
 import { personDetail } from "@/offline/person";
 import { lanesFor, noLaneReason, suggestLane } from "@/offline/lanes";
 import { OfficerStore } from "@/offline/officer-store";
-import { actorFor, shiftIsLive, type OfficerShift } from "@/offline/officer";
+import {
+  actorFor,
+  shiftIsLive,
+  staffTokenFor,
+  type OfficerShift,
+} from "@/offline/officer";
 import { unlockOfficer } from "@/offline/sync-client";
 import {
   buildAmmunitionIssue,
@@ -61,6 +66,7 @@ import { buildIncident, type LocalIncident } from "@/offline/incident";
 import { formatsFor } from "@/domain/scoring";
 import type { DeviceSurface } from "@/domain/enums";
 import { CheckInSheet } from "./CheckInSheet";
+import { Dashboard } from "./Dashboard";
 import { ConsoleEnrolment } from "./ConsoleEnrolment";
 import { EndOfDay } from "./EndOfDay";
 import { EquipmentSheet } from "./EquipmentSheet";
@@ -199,6 +205,21 @@ export function ConsoleApp() {
   const [pairing, setPairing] = useState<RelayShooter | null>(null);
   const [scoring, setScoring] = useState<RelayShooter | null>(null);
   const [reportingIncident, setReportingIncident] = useState(false);
+
+  /**
+   * §6.6's owner dashboard, open over the desk.
+   *
+   * A view rather than a route, so the console stays one document the service
+   * worker precaches (see src/app/console/page.tsx). It is offered on the DESK
+   * only — a lane tablet is clamped to a post on a firing line and the club's
+   * revenue has no business being one tap from it.
+   *
+   * The button is shown to every officer and the endpoint refuses all but the
+   * founder. That is the §4 rule applied to a screen: no surface makes its own
+   * permission decision, so a range officer who taps it reads "Your role does
+   * not cover this" from the server rather than being quietly shown nothing.
+   */
+  const [dashboardOpen, setDashboardOpen] = useState(false);
 
   /** The fingerprint of the pack on disk, for the conditional refresh. */
   const etag = useRef<string | null>(null);
@@ -1104,13 +1125,22 @@ export function ConsoleApp() {
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setClosing(true)}
-          className="shrink-0 rounded border border-[--color-reticle-black] px-3 py-2 text-sm font-medium"
-        >
-          End of day
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => setDashboardOpen(true)}
+            className="rounded border border-[--color-reticle-black] px-3 py-2 text-sm font-medium"
+          >
+            Dashboard
+          </button>
+          <button
+            type="button"
+            onClick={() => setClosing(true)}
+            className="rounded border border-[--color-reticle-black] px-3 py-2 text-sm font-medium"
+          >
+            End of day
+          </button>
+        </div>
       </header>
 
       {boot.gate.notices.map((notice) => (
@@ -1202,6 +1232,13 @@ export function ConsoleApp() {
           body={boot.pack.pack.activeWaiverBody}
           onSign={(captured) => signWaiver(signing, captured)}
           onCancel={() => setSigning(null)}
+        />
+      )}
+
+      {dashboardOpen && (
+        <Dashboard
+          staffToken={staffTokenFor(shift, new Date())}
+          onClose={() => setDashboardOpen(false)}
         />
       )}
 

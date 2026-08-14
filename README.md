@@ -884,19 +884,74 @@ one-word bypass — and it is invisible until someone finds it.
 once so the desk can show status offline, once so the database maintains the
 column itself. Changing the mapping means changing both, in the same commit.
 
-## Delivered so far — M0 only
+## Delivered — M0 through M10
 
-Against the §11 plan, **M0 (Foundations)** is complete except for OTP auth and
-device registration, and the §5 state machines from M2 are done early because
-the capability service needed them. The remaining milestones — M1 offline
-spine onward — are not started.
+Against the §11 plan, every milestone's software is built. What remains is not
+code, and saying so plainly matters more than the table.
 
-**M1 comes next and the sequencing note in §11 is not optional:** offline is a
-property every later milestone is built into, and attempting it after M5 means
-rewriting M2 through M5. §8.5 defines done for it as a real power cut on a real
-tablet, not devtools offline mode.
+| | | Where it lives |
+| --- | --- | --- |
+| **M0** | Foundations | `src/db/armory/`, `src/domain/`, `drizzle/0001`–`0002` |
+| **M1** | Offline spine | `src/offline/`, `src/sync/`, `src/server/sync/` |
+| **M2** | System of record | `src/server/armory/{people,memberships,waivers,qualifications,licences}.ts` |
+| **M3** | Admission | `src/server/armory/applications.ts`, `src/domain/roster.ts` |
+| **M4** | Hosting and booking | `src/domain/availability.ts`, `src/server/armory/{bookings,allowances,invitations,visit}.ts` |
+| **M5** | Desk | `src/components/console/`, `src/offline/{today,checkin,waiver,equipment,close}.ts` |
+| **M6** | Armoury | `src/server/armory/register.ts`, `src/domain/exceptions.ts` |
+| **M7** | Lane | `src/domain/scoring.ts`, `src/offline/{relay,score,incident}.ts`, `src/components/console/{Relay,PairSheet,ScoreSheet,IncidentSheet}.tsx` |
+| **M8** | Money | `src/domain/charges.ts`, `src/server/armory/{money,billing}.ts`, `/api/armory/paystack/webhook` |
+| **M9** | Dashboard | `src/domain/dashboard.ts`, `src/server/armory/dashboard.ts`, `/api/dashboard` |
+| **M10** | Hardening | `src/domain/period-boundary.test.ts`, `scripts/volume.ts`, `docs/M10_*.md` |
 
-## M1 — the offline spine (in progress)
+### What "delivered" does not mean
+
+§12's definition of done has eight clauses and three of them cannot be satisfied
+by a repository. They are outstanding, they are the ones a rushed project
+sacrifices, and they are tracked as documents rather than as tickets:
+
+- **§8.5's power cut has not been performed.** `docs/M1_offline_acceptance.md` is
+  the protocol and the whole of it can now be run — M7 closed the last two gaps,
+  score capture and incidents. It needs the actual tablet model being purchased
+  and somebody willing to pull the power mid-session. Devtools offline mode is
+  explicitly not evidence.
+- **§10's restore has not been rehearsed.** `docs/M10_restore_rehearsal.md` is
+  the protocol. §10 phrases this as a prohibition: *a backup never restored is a
+  hope.*
+- **The security review has findings.** `docs/M10_security_review.md` walks §10's
+  eight requirements against the code and closes with seven launch blockers —
+  four of them hosting decisions, three of them engineering work that has not
+  been done (a founder-facing revocation control, the guest data redaction path,
+  and a scheduled payment reconciliation sweep).
+
+`docs/M10_go_live.md` is the sequence that closes them, plus the staff training —
+which is run as a test of the software, because §12 asks that "a range officer
+who has not seen the screen before can complete the workflow without
+instruction", and that is a property of the screens rather than of the training.
+
+### One defect this milestone found, recorded because it is the interesting kind
+
+§2.1 warns that "most defects in this system only appear at volume or at a period
+boundary", and M10's boundary tests found one on their first run.
+
+`licences.expires_on` is a DATE. Both sides parse it with `parseDateColumn`,
+which yields **midnight in Lagos at the start of that day** — so the capability
+service's `expiresOn > now` made a licence expire at the *beginning* of its
+expiry date. A member holding a licence marked "expires 14 August" was refused
+all day on the 14th.
+
+The server never agreed with it. `expireLapsedLicences` sweeps with
+`expires_on < today`, so the row stayed `verified` in the database. The column
+said valid, the sweep said valid, and §4's one authoritative service said no.
+
+It is invisible on every other day of a licence's life. It surfaces on one
+morning, at the desk, to a member whose paperwork is in order — and §12.1 plants
+"a licence that expired yesterday, **one expiring today**" in the seed as two
+distinct cases which, under the old comparison, behaved identically.
+
+Fixed in `src/domain/capability/index.ts` (`liveOn`), with the reasoning at the
+call site.
+
+## M1 — the offline spine
 
 ```
 src/offline/outbox/
@@ -1029,13 +1084,187 @@ checks in, and §4 requires that desk row to clear itself without the officer
 retrying. Shipping a precomputed status would make that impossible and would
 duplicate the permission logic §4 forbids duplicating.
 
-### Still outstanding in M1
+### ~~Still outstanding in M1~~ — closed
 
-The sync endpoints (`/sync/daypack`, `/sync/push`, `/sync/pull`), the console
-routes themselves, and the sync status UI. The offline data layer — outbox,
-day pack, device trust, revocation — is in place and tested.
+The sync endpoints, the console routes and the sync status UI are all built. What
+follows is what was added on top of them, and only where the design is not
+obvious from the code.
 
 **And §8.5 is not discharged by any of the above.** Its definition of done is a
 real tablet with the power physically pulled mid-session — "Browser devtools
 offline mode does not substitute for it and must not be accepted as evidence."
 The tests here are a precondition for that, not a substitute.
+
+
+## M7 — the lane
+
+§6.5 gives the lane four screens and one budget that shapes all of them: "large
+type, readable at arm's length in daylight". That is not a font size on a mock —
+it is a tablet clamped to a post on a covered outdoor line at midday, read by an
+officer in ear defenders who is not going to walk over and squint.
+
+What it constrains is the **data**, which is why `src/offline/relay.ts` enforces
+it rather than the CSS: a row that has to carry six facts cannot be set in type
+that large. A relay row carries four — the lane, the shooter, what they are
+holding, and whether anything is outstanding.
+
+**The lane is the same application as the desk, chosen by the credential.** §3.1
+registers a device against a surface and the day pack returns it, so a tablet is
+told which screen it is by the server that registered it. A toggle would mean a
+lane tablet outside could be switched into the desk, which holds check-in,
+person detail and the end-of-day close — and §10's whole argument for
+device-bound sessions is that the device is part of the credential.
+
+### The lane cannot see what the desk recorded, unless it has synced
+
+Check-in happens at the counter, on another tablet. So the day pack gained a
+`participations` projection — the server's view of who is on the premises — and
+`mergedParticipations` combines it with whatever this device recorded itself,
+local winning whole-row rather than field-by-field. The common disagreement is a
+check-OUT this device made thirty seconds ago and has not sent, and a merge that
+preferred the server's non-null values would put somebody back on a lane they
+had just left.
+
+**With no uplink between the two tablets, this does not close.** Two devices with
+no network between them cannot learn what the other wrote, and no amount of
+projection changes that. The honest position is recorded in `src/server/rows.ts`:
+peer sync between devices is a distributed system with its own conflict rules, it
+is not in Phase 1, and nothing assumes it.
+
+### Scores are stored in tenths, for the same reason money is stored in kobo
+
+`rounds.total_score` is an INTEGER (§3.3) and ISSF decimal scoring goes to one
+place — a 10.9 is a real score. §2 already decided how this codebase reconciles
+that: "all amounts stored as integer kobo. Never floats." So a decimal format
+stores tenths and `ScoreFormat.scale` says which.
+
+`parseScore` splits the string rather than multiplying. The multiply is in fact
+exact for every value in the current table — which was checked rather than
+assumed, and is precisely the problem: the safety is a property of the *range*,
+not of the arithmetic, and nobody adding a format with a larger ceiling in two
+years will re-check it.
+
+### The score screen raises no keyboard
+
+A numeric input on Android covers half the screen, animates in, and puts the
+digits somewhere different depending on the keyboard the tablet shipped with.
+§6.5 gives the whole interaction twenty seconds and an officer standing on a
+firing line is not looking down. So the digits are on the page, in a fixed place,
+and the confirm button carries the score itself — a button that names the number
+cannot be pressed by muscle memory into recording the wrong one.
+
+### Incidents are the one write that is two rows
+
+Every other push is idempotent because its primary key is the client-generated
+id. That argument does not reach `incident_persons`, whose key is
+(incident_id, person_id) and which has no client id of its own. So it is a
+transaction — both inserts, each `ON CONFLICT DO NOTHING` — and it carries its
+own `kind` in `src/sync/operations.ts` rather than being folded into
+`AppendOnlyInsert`, because a reader has to be able to tell which guarantee they
+are standing on.
+
+The builder refuses on exactly two things: a category and an account of what
+happened. Everything else it might have insisted on — a session, the people, a
+time — is a way for a safety record not to exist.
+
+## M8 — money
+
+§3.5 says the host-pays rule must be enforced "in code, not convention", and the
+way to do that is for the guest's id to have **no parameter to be passed into**.
+`guestOverageCharge` in `src/domain/charges.ts` takes a host person id and a
+guest *name* — the name only so the line reads. There is no argument to get
+wrong.
+
+The charge is raised when the guest **attends**, not when the invitation is
+issued. §5 returns the allowance on cancellation, so a charge raised at issue
+would have to be reversed every time — filling a member's statement with charges
+and credits for Saturdays that did not happen. `attended` is terminal and returns
+nothing, so a charge raised there never needs reversing.
+
+**The balance column is never written from application code.**
+`accounts.balance_kobo` is recomputed by trigger from `account_transactions` and
+a direct UPDATE is rejected, exactly as `firearms.status` is. The only money
+write in `src/server/armory/money.ts` is an INSERT into the ledger.
+
+**Two idempotency mechanisms, both load-bearing.** What the club originates goes
+through `record()` and is idempotent on a request id. What Paystack originates is
+idempotent on `gateway_reference`, which carries a unique index — not a
+preference but the only option, because a webhook retry does not carry our
+request id and the gateway decides when to send it. §12.1's duplicate-webhook
+test is proved in `scripts/enforcement.test.sql`, because a TypeScript test can
+only show that the TypeScript did not try.
+
+### §14's open items moved out of code and into a row
+
+`drizzle/0006` adds `armory.club_settings` — one row, enforced by a unique index
+on a boolean column that exists only to carry it. Every value it holds was a
+literal somewhere, each carrying a comment saying the device reads it from the
+pack "so it changes without a deploy". That was half true: the device did, and
+the server read a constant.
+
+Null means **not decided**, and every reader states what it does with null. No
+default would be safe — an overage price of zero bills nobody, a guessed one
+bills a member for something the club never agreed.
+
+## M9 — the owner dashboard
+
+§6.6 lists ten metrics and the list is not arbitrary. Read with §1.1 it is four
+questions in descending order of what they are worth: is the club filling, is the
+funnel working, is the range being used, is anything wrong.
+
+**Every rate states its denominator on screen.** `hostingRate` is not a number,
+it is `{ hosts, eligible, rate, line }`, and the line reads "9 of 31 members who
+can host brought a guest". A bare "29%" invites a founder to compare it against a
+figure from a different denominator six months later.
+
+Two denominators are chosen deliberately and are the whole correctness of the
+panel:
+
+- Hosting rate divides by members whose tier **can** host. Dividing by the whole
+  roster reports a club as failing at something half its members were never able
+  to do — and the response to a poor hosting rate is to spend money encouraging
+  it, which would do nothing.
+- Conversion divides by **distinct guests**, not visits. §3.2 counts "across all
+  hosts, not per host", and a rate over visits would *fall* every time a guest
+  enjoyed themselves enough to come back.
+
+**The dashboard is the one console screen that requires a network, and it says
+so.** Nothing on it is in the day pack, and putting it there would mean every
+tablet on the range holding the club's revenue. §10's argument about what belongs
+on a device applies: the pack deliberately carries no address and no licence
+scan, and it should not carry the books either.
+
+**Founder only, and not because the numbers are secret.** Most of it is visible
+elsewhere to an officer. The restriction is the whole of it together — revenue, a
+ranking of which members bring people who join, and every override any officer
+made this week. An officer who can read the override list can see how closely
+they are being watched, and is being invited to calibrate.
+
+## M10 — hardening
+
+Three artefacts, and none of them is a checklist.
+
+`src/domain/period-boundary.test.ts` is the boundary half of §11's "load and
+period-boundary testing". Every dated rule in the system has a day on which it
+changes, and the bug is almost never in the rule — it is in whether the boundary
+is inclusive and in which timezone the question was asked. Lagos is UTC+1 all
+year, which removes daylight saving and leaves the one that bites: between 23:00Z
+and midnight it is a different date in the two zones. The range closes long
+before 11pm, which is exactly why that defect survives to production.
+
+`scripts/volume.ts` (`npm run volume`) is the load half, at §2.1's stated size —
+a hundred members, sixty guests, sixty arrivals. It **asserts it produced rows
+before timing anything**, because the failure mode of a benchmark is not being
+slow, it is measuring nothing: a fixture whose slots fell outside the window
+would return an empty array in microseconds and pass every budget for the rest of
+the project's life.
+
+It is also explicitly *not* §6.4's acceptance test. §12 measures the render "on
+the actual tablet model being purchased", and this runs in Node with no browser,
+no IndexedDB and no paint. A pass is necessary and not sufficient.
+
+`docs/M10_security_review.md` is a review rather than a checklist: §10's eight
+requirements, what the code does, and what is outstanding — because a security
+document that only lists what was done reads as a pass when it is not. It ends
+with seven launch blockers, four of them hosting decisions and three of them
+engineering work that has not been done.

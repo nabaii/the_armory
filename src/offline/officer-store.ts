@@ -43,6 +43,17 @@ type StoredShift = {
   unlockedAt: string;
   expiresAt: string;
   failedAttempts: number;
+  /**
+   * §6.6's dashboard read. Optional so a shift stored before this field
+   * existed still loads — the same rule the day pack follows: a device holding
+   * yesterday's state keeps working.
+   *
+   * This is the one bearer credential this store holds, and it is here rather
+   * than anywhere else for the reason the header gives: `armory-device` is what
+   * §10's revocation destroys.
+   */
+  sessionToken?: string | null;
+  sessionExpiresAt?: string | null;
 };
 
 export class OfficerStore {
@@ -62,6 +73,8 @@ export class OfficerStore {
       unlockedAt: shift.unlockedAt.toISOString(),
       expiresAt: shift.expiresAt.toISOString(),
       failedAttempts: shift.failedAttempts,
+      sessionToken: shift.sessionToken,
+      sessionExpiresAt: shift.sessionExpiresAt?.toISOString() ?? null,
     };
 
     const store = await this.db.store(RECORDS, "readwrite");
@@ -82,6 +95,10 @@ export class OfficerStore {
       unlockedAt: new Date(row.unlockedAt),
       expiresAt: new Date(row.expiresAt),
       failedAttempts: row.failedAttempts,
+      sessionToken: row.sessionToken ?? null,
+      sessionExpiresAt: row.sessionExpiresAt
+        ? new Date(row.sessionExpiresAt)
+        : null,
     };
   }
 

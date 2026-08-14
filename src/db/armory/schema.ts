@@ -111,6 +111,80 @@ const updatedAt = () =>
   timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
 
 /* ============================================================================
+   CLUB SETTINGS — the §14 open items, in a row rather than in code
+
+   §14 lists items that are "not structurally blocking" and are the club's to
+   decide: the guest overage price, the roster cap, how long a waiver signature
+   stays valid, whether on-premises storage is enabled, which disciplines demand
+   a club sign-off.
+
+   Every one of them was a constant somewhere before this table existed, and
+   each carried the same comment: read this from the pack "so it changes without
+   a deploy". That was half true. The DEVICE read it from the pack; the SERVER
+   read it from a literal in src/server/sync/daypack-query.ts, so changing the
+   club's mind still meant a release — on the afternoon the founder decided,
+   which is exactly when nobody wants to ship code.
+
+   ===========================================================================
+   ONE ROW, ENFORCED
+
+   A settings table with two rows is a settings table where half the system is
+   reading the wrong one, and it is invisible until the two disagree. The unique
+   index on the `singleton` column is what makes a second row impossible; the
+   column exists only to carry that index.
+
+   ===========================================================================
+   NULL MEANS "NOT DECIDED", AND EVERY READER MUST HANDLE IT
+
+   None of these have defaults that would be safe to invent. A guest overage
+   price defaulted to zero bills nobody; defaulted to a guess bills a member for
+   something the club never agreed. A roster cap defaulted to a number closes
+   admissions at it.
+
+   So they are nullable, null means §14 has not landed, and each reader states
+   what it does with that — see `overagePriceKobo` in
+   src/server/armory/invitations.ts, which raises no charge and refuses no
+   guest.
+   ========================================================================= */
+
+export const clubSettings = armory.table(
+  "club_settings",
+  {
+    id: id(),
+    /**
+     * Always true. The unique index below is the whole point of the column.
+     *
+     * `boolean` rather than a constant integer so the constraint reads as what
+     * it is: there is one settings row, and it is this one.
+     */
+    singleton: boolean("singleton").notNull().default(true),
+
+    /** §14, §8.3. Charged to the HOST — §1.2 rule 5. Null until decided. */
+    guestOveragePriceKobo: kobo("guest_overage_price_kobo"),
+
+    /** §3.1, §11 M3. The membership cap admissions are enforced against. */
+    rosterCap: integer("roster_cap"),
+
+    /** §3.1. Null means a signature against the active version never expires. */
+    waiverValidityDays: integer("waiver_validity_days"),
+
+    /** §13, §14. The on-premises storage workflow sits behind this. */
+    storageEnabled: boolean("storage_enabled").notNull().default(false),
+
+    /** §4.2's MAY_SHOOT_DISCIPLINE. Empty means none demand a sign-off. */
+    disciplinesRequiringQualification: jsonb(
+      "disciplines_requiring_qualification",
+    )
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("club_settings_singleton_key").on(t.singleton)],
+);
+
+/* ============================================================================
    3.1 PEOPLE AND STANDING
    ========================================================================= */
 
