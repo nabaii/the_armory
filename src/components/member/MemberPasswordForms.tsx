@@ -3,12 +3,11 @@
 import { useActionState } from "react";
 import { Field, FormStatus, SubmitButton, TextInput } from "@/components/ui/Form";
 import { Body } from "@/components/ui/Text";
+import { changeMemberPassword, signInWithPassword } from "@/app/actions/member-auth";
 import {
-  changeMemberPassword,
   emptyChangePasswordState,
   emptyMemberSignInState,
-  signInWithPassword,
-} from "@/app/actions/member-auth";
+} from "@/lib/member-auth-state";
 
 /**
  * MEMBER SIGN-IN AND PASSWORD CHANGE — the interim credential's two screens.

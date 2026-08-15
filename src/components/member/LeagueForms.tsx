@@ -10,12 +10,8 @@ import {
 } from "@/components/ui/Form";
 import { Body, Caption, H2 } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
-import {
-  createLeagueAction,
-  joinLeagueAction,
-  emptyLeagueState,
-  seasonCapMessage,
-} from "@/app/actions/leagues";
+import { createLeagueAction, joinLeagueAction } from "@/app/actions/leagues";
+import { emptyLeagueState, seasonCapMessage } from "@/lib/league-state";
 import { routes } from "@/lib/site";
 
 const WEEKDAYS = [

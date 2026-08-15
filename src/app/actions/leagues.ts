@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { requireMember } from "@/server/auth/session";
 import { createLeague, joinLeagueByCode } from "@/server/leagues/repository";
 import { normaliseJoinCode } from "@/server/leagues/join-code";
-import { SEASON_CAP_MESSAGE, canCaptainLeague } from "@/server/leagues/eligibility";
+import { canCaptainLeague } from "@/server/leagues/eligibility";
 import { isDatabaseConfigured } from "@/db/client";
 import { log } from "@/server/log";
 import { routes } from "@/lib/site";
@@ -18,14 +18,7 @@ import { routes } from "@/lib/site";
  * button, not the endpoint.
  */
 
-export type LeagueState = {
-  errors?: Record<string, string>;
-  formError?: string;
-  /** Rendered as a considered offer rather than a rejection. See below. */
-  capReached?: boolean;
-};
-
-export const emptyLeagueState: LeagueState = {};
+import type { LeagueState } from "@/lib/league-state";
 
 /* ---------------------------------------------------------------------------
    CREATE
@@ -166,5 +159,5 @@ export async function joinLeagueAction(
   return { formError: "We could not join that league. Please try again." };
 }
 
-/** Exported so the form can render the same words the rule uses. */
-export const seasonCapMessage = SEASON_CAP_MESSAGE;
+/* The cap copy the form renders is re-exported from @/lib/league-state — a
+   `"use server"` file may export only async functions. */

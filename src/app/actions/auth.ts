@@ -16,6 +16,7 @@ import { isHoneypotTripped } from "@/server/validation";
 import { log, redactEmail } from "@/server/log";
 import { env } from "@/server/env";
 import { routes, site } from "@/lib/site";
+import type { SignInState } from "@/lib/sign-in-state";
 
 /**
  * SIGN-IN — request a link.
@@ -36,13 +37,6 @@ import { routes, site } from "@/lib/site";
  * trade — the recovery is to try again, and the check page says so plainly.
  * ===========================================================================
  */
-
-export type SignInState = {
-  ok: boolean;
-  error?: string;
-};
-
-export const emptySignInState: SignInState = { ok: false };
 
 export async function requestSignInLink(
   _previous: SignInState,

@@ -1,12 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import {
-  bookSession,
-  cancelInvitation,
-  emptyHostingState,
-  inviteGuest,
-} from "@/app/actions/hosting";
+import { bookSession, cancelInvitation, inviteGuest } from "@/app/actions/hosting";
+import { emptyHostingState } from "@/lib/hosting-state";
 import { FormStatus, SubmitButton } from "@/components/ui/Form";
 import { Body, Caption } from "@/components/ui/Text";
 
