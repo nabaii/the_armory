@@ -5,12 +5,14 @@
       "Bash(npm run *)",
       "Bash(cd \"c:/Users/enaic/OneDrive/Desktop/miyata/dgi_armoury\" && sed -n '/ssl: needsTls/,/^}/p' src/db/pool.ts | head -8 && echo \"=== the TLS rule ===\" && sed -n '/^function needsTls/,/^}/p' src/db/pool.ts)",
       "Bash(rm -f ./mig-tmp.mts)",
-      "Bash(node --input-type=module -e ' *)"
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(cd \"c:/Users/enaic/OneDrive/Desktop/miyata/dgi_armoury\" && sed -n '/^export const tiers = armory.table/,/^\\);/p' src/db/armory/schema.ts | grep -n \"^\\\\s*[a-zA-Z]*:\" | head -25 && echo \"=== waiverVersions ===\" && sed -n '/^export const waiverVersions = armory.table/,/^\\);/p' src/db/armory/schema.ts | grep -n \"^\\\\s*[a-zA-Z]*:\" && echo \"=== staffUsers ===\" && sed -n '/^export const staffUsers = armory.table/,/^\\);/p' src/db/armory/schema.ts | grep -n \"^\\\\s*[a-zA-Z]*:\" && echo \"=== memberships ===\" && sed -n '/^export const memberships = armory.table/,/^\\);/p' src/db/armory/schema.ts | grep -n \"^\\\\s*[a-zA-Z]*:\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\enaic\\OneDrive\\Desktop\\miyata\\dgi_armoury\\src\\db\\armory",
       "C:\\Users\\enaic\\OneDrive\\Desktop\\miyata\\dgi_armoury\\src\\server",
-      "c:\\Users\\enaic\\OneDrive\\Desktop\\miyata\\dgi_armoury\\src\\db"
+      "c:\\Users\\enaic\\OneDrive\\Desktop\\miyata\\dgi_armoury\\src\\db",
+      "C:\\Users\\enaic\\OneDrive\\Desktop\\miyata\\dgi_armoury\\src\\db\\armory"
     ]
   }
 }
