@@ -287,7 +287,7 @@ export const contentGate: GateItem[] = [
     severity: "blocker",
     phase: 2,
     note:
-      "DATABASE_URL against Neon or Supabase. Pick the region by measuring " +
+      "DATABASE_URL against any Postgres. Pick the region by measuring " +
       "Nigerian latency rather than trusting documentation — the same rule that " +
       "governed hosting. Scores and standings are irreplaceable in a way " +
       "marketing copy never was, so point-in-time recovery must be enabled AND " +

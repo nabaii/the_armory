@@ -14,23 +14,22 @@ import {
  * ===========================================================================
  * THE CONSTRAINT THAT SHAPES THIS FILE
  *
- * The Neon HTTP driver has no multi-statement transactions — a deliberate
- * trade for runtime portability (see src/db/client.ts). That makes the obvious
- * implementation of token redemption a race:
+ * SINGLE-STATEMENT BY DESIGN, AND NO LONGER BY NECESSITY.
  *
- *     const token = await find(hash);        // ← two clicks both reach here
- *     if (token.consumedAt) reject();        // ← both see null
- *     await markConsumed(token.id);          // ← both proceed
+ * This was written under the Neon HTTP driver, which had no multi-statement
+ * transactions, and the redemption below was expressed as one UPDATE with the
+ * guard in its WHERE clause because there was no alternative.
  *
- * Two rapid clicks on the same email link — or a double-submit, or a retry —
- * would each mint a session. So redemption is expressed as a SINGLE statement
- * whose WHERE clause carries the guard, and which returns a row only if it was
- * the one that actually changed it. Postgres makes that atomic for free.
+ * Both halves now share a pooled connection (src/db/pool.ts) and a transaction
+ * is available. This code is NOT being changed, because the single statement
+ * was never the weaker option: a guard in a WHERE clause is atomic against
+ * concurrent writers without holding a lock, and marking the token used in the
+ * same statement that reads it is precisely what makes a sign-in link
+ * unredeemable twice.
  *
- * The rule generalises: anywhere a check-then-write would race, put the check
- * in the WHERE clause and let the row count be the answer.
- * ===========================================================================
- */
+ * What changed is that it is now a choice. If a future write here genuinely
+ * needs several statements to move together, it may have a transaction.
+*/
 
 /* ---------------------------------------------------------------------------
    MEMBERS

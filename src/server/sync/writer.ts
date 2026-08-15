@@ -116,10 +116,11 @@ export class PostgresAppendOnlyWriter implements PushWriter {
    * §3.3's incident — the one push that is two rows, in one transaction.
    *
    * The armoury client holds a pooled TCP connection with real transactions
-   * (src/db/armory/client.ts), which exists for §8.3's allowance write and is
-   * what makes this possible at all. The Neon HTTP driver the leagues product
-   * uses could not do it: two statements, no transaction, and an incident that
-   * can land with nobody attached to it.
+   * (src/db/pool.ts), which exists for §8.3's allowance write and is what makes
+   * this possible at all. An HTTP driver could not do it — two statements, no
+   * transaction, and an incident that can land with nobody attached to it —
+   * which is why moving both halves onto one pool made the pool a requirement
+   * of this system rather than a preference of it.
    *
    * `created` is read from the incident insert only. The join's key is
    * (incident_id, person_id) and conflicts there are ordinary — the same person

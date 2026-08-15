@@ -20,12 +20,15 @@ import { parseEvent, verifyWebhookSignature } from "@/server/paystack";
  * the marketing site. Both use one Paystack account, so both receive every
  * event — and the obvious tidy-up is one endpoint with a branch on metadata.
  *
- * That was rejected. The two write to different databases with different
- * drivers (the leagues product's Neon HTTP client, and the management system's
- * pooled TCP one — see src/db/armory/client.ts), have different failure modes,
- * and the management one holds the club's money. A branch means a change to the
- * booking flow can break subscription payments, and the blast radius of a
- * mistake in either grows to cover both.
+ * That was rejected, and one of the original reasons has since expired — worth
+ * recording, because the conclusion survives it.
+ *
+ * The argument was partly that the two wrote through different drivers. They no
+ * longer do: both halves share one pool (src/db/pool.ts). What remains is what
+ * actually carried the decision — they write to different SCHEMAS, have
+ * different failure modes, and the management one holds the club's money. A
+ * branch means a change to the booking flow can break subscription payments,
+ * and the blast radius of a mistake in either grows to cover both.
  *
  * Paystack allows one webhook URL per account, so BOTH endpoints must exist and
  * be reachable, and the account is configured with whichever the club is

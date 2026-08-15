@@ -1,23 +1,33 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
 import * as armorySchema from "./schema";
+import {
+  closePool,
+  getPool,
+  isDatabaseUrlSet,
+  registerPoolReset,
+} from "@/db/pool";
 
 /**
- * DATABASE CLIENT — the management system.
+ * DATABASE CLIENT — the management system (`armory` schema).
  *
  * ===========================================================================
- * WHY THIS IS A SECOND CLIENT, AND NOT src/db/client.ts
+ * WHY THIS IS A SECOND CLIENT AND NOT src/db/client.ts
  *
- * The leagues product connects over the Neon HTTP driver, and its own header
- * comment states the trade-off plainly:
+ * It is no longer a second DRIVER — both halves now share one pool
+ * (src/db/pool.ts). It remains a second CLIENT because the two products have
+ * different schemas, and a drizzle instance is scoped to one.
+ *
+ * The original reason for the split was the driver, and it is worth keeping
+ * because it is why the pool looks the way it does. The leagues product
+ * connected over the Neon HTTP driver, whose header stated the trade-off:
  *
  *   "The trade-off is real and worth stating: HTTP means no transactions
  *    spanning multiple statements. Anywhere Phase 2 needs atomicity … it must
  *    be expressed as a single statement with the guard in its WHERE clause."
  *
- * That was a sound trade for leagues. It is not available to this system,
- * because the Build Specification requires multi-statement atomicity in the
- * one place it is least willing to be wrong about — the guest allowance:
+ * That was a sound trade for leagues. It was never available to this system,
+ * because the Build Specification requires multi-statement atomicity in the one
+ * place it is least willing to be wrong about — the guest allowance:
  *
  *   §3.2  "used_count is authoritative and mutated only server-side, inside a
  *          transaction."
@@ -31,80 +41,32 @@ import * as armorySchema from "./schema";
  * cannot express it, and §8.3 names what goes wrong when it is not expressed:
  * "Two devices, one allowance."
  *
- * So the management system holds a real pooled TCP connection. §2 leaves the
- * server runtime to the team and asks only for "idempotent write endpoints",
- * and node-postgres speaks to any Postgres — Neon, Render, Supabase, or a
- * managed instance in whichever region measures best from Abuja (§2, hosting).
- * The hosting decision stays open; only the driver is fixed.
+ * So this system has always held a real pooled TCP connection. What changed is
+ * that the leagues half joined it rather than keeping a driver of its own.
  *
  * ===========================================================================
  * UNCONFIGURED IS LOUD, NOT SILENT
  *
  * The same rule as everywhere else in this codebase: accessing the database
- * without DATABASE_URL throws with a message that says what to do, rather
- * than returning a stub that quietly succeeds. A management system that
- * appears to check someone in and writes nothing is worse than one that is
- * plainly down.
+ * without DATABASE_URL throws with a message that says what to do, rather than
+ * returning a stub that quietly succeeds. A management system that appears to
+ * check someone in and writes nothing is worse than one that is plainly down.
  */
 
-const connectionString = process.env.DATABASE_URL?.trim();
-
-export const isArmoryDatabaseConfigured = (): boolean => Boolean(connectionString);
-
-let pool: Pool | null = null;
-
-function connect() {
-  if (!connectionString) {
-    throw new Error(
-      "DATABASE_URL is not set. The Armory management system requires a " +
-        "Postgres connection that supports transactions — see §3.2 and §8.3 " +
-        "on the guest allowance. The marketing pages do not need it.",
-    );
-  }
-
-  pool = new Pool({
-    connectionString,
-    /* Small on purpose. The club has a handful of tablets and one founder;
-       the pool exists for transaction isolation, not for throughput, and a
-       large idle pool against a managed Postgres is just billed connections. */
-    max: 10,
-    idleTimeoutMillis: 30_000,
-    /* §2 asks for hosting with low latency to Nigeria, which in practice
-       means the link is sometimes poor rather than absent. A connection
-       attempt that hangs is indistinguishable at the desk from one that
-       failed, and the desk has an offline path it should be falling back to. */
-    connectionTimeoutMillis: 10_000,
-    ssl: needsTls(connectionString) ? { rejectUnauthorized: true } : undefined,
-  });
-
-  /* An idle client erroring — a managed provider recycling a connection, a
-     network blip — reaches the pool as an 'error' event. Unhandled, it is an
-     uncaught exception that takes the process down. */
-  pool.on("error", (error) => {
-    console.error("[armory] idle database client error", error);
-  });
-
-  return drizzle(pool, { schema: armorySchema, casing: "snake_case" });
-}
+export const isArmoryDatabaseConfigured = isDatabaseUrlSet;
 
 /**
- * Whether to demand TLS.
- *
- * §10 requires "TLS in transit", and this data is identity documents, home
- * addresses and firearm licences. The exception is a local connection during
- * development, where there is no certificate to verify and no network to
- * intercept. Anything else — including a hostname that merely looks local —
- * gets TLS with verification on, rather than the `rejectUnauthorized: false`
- * that turns TLS into decoration.
+ * `casing: "snake_case"` because this schema leans on the convention, unlike
+ * the leagues one which names every column explicitly. See src/db/client.ts.
  */
-function needsTls(url: string): boolean {
-  if (process.env.NODE_ENV !== "production") {
-    return !/@(localhost|127\.0\.0\.1|::1|host\.docker\.internal)[:/]/.test(url);
-  }
-  return true;
-}
+const connect = () =>
+  drizzle(getPool(), { schema: armorySchema, casing: "snake_case" });
 
 let instance: ReturnType<typeof connect> | null = null;
+
+registerPoolReset(() => {
+  instance = null;
+});
 
 /** Lazily constructed, so importing this module never throws at build time. */
 export function getArmoryDb() {
@@ -143,11 +105,13 @@ export type ArmoryReader = ArmoryDb | ArmoryTx;
 
 export { armorySchema as schema };
 
-/** For tests and for graceful shutdown. */
+/**
+ * For tests and for graceful shutdown.
+ *
+ * Closes the SHARED pool, so the leagues client's cached instance is discarded
+ * too — `registerPoolReset` is what makes that happen. Kept under this name
+ * because every existing caller is a management-system test.
+ */
 export async function closeArmoryDb(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
-    instance = null;
-  }
+  await closePool();
 }

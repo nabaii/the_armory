@@ -27,7 +27,6 @@
     "verify:full": "npm run verify && npm run build && npm run audit"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.1.0",
     "drizzle-orm": "^0.45.2",
     "next": "16.2.12",
     "pg": "^8.23.0",
