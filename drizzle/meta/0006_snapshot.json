@@ -2244,6 +2244,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "guest_retention_days": {
+          "name": "guest_retention_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "storage_enabled": {
           "name": "storage_enabled",
           "type": "boolean",

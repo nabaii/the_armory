@@ -137,6 +137,10 @@ update, not a deploy.
       and admission enforces nothing.
 - [ ] `waiver_validity_days` — null means a signature against the active version
       never expires. Fails open, deliberately.
+- [ ] `guest_retention_days` — **null means no automatic erasure.** Erasure on
+      request works today and is the obligation with a deadline; this governs
+      only the sweep, and erasing on a period nobody agreed is the one setting
+      here whose mistake cannot be undone. §10, blocked on counsel.
 - [ ] `storage_enabled` — false. §13 keeps the workflow behind this flag.
 - [ ] `disciplines_requiring_qualification` — empty means none demand a sign-off.
 
@@ -164,8 +168,12 @@ update, not a deploy.
       from the tablet.
 - [ ] Each one synced once online, then **opened again with the network off** to
       confirm it runs from its own day pack.
-- [ ] A device deliberately revoked and confirmed wiped, then re-registered.
+- [ ] A device deliberately revoked **from the dashboard's Tablets panel** and
+      confirmed wiped, then restored and re-enrolled with a reissued code.
       Steps 29 and 30 of the offline acceptance protocol.
+      Note that restore is not undo: a revoked tablet's credential is destroyed,
+      so putting one back to work is restore *then* reissue, and the code is
+      shown once.
 
 ### Money
 
@@ -177,8 +185,12 @@ update, not a deploy.
       lands with `status = succeeded` and the member's balance moves.
 - [ ] The same webhook delivered twice from the Paystack dashboard: **one payment
       row** (§12.1).
-- [ ] The reconciliation sweep scheduled (`stalePendingPayments`). Until it is,
-      a lost webhook is found by a human or not at all.
+- [ ] **`CRON_SECRET` set, and a schedule added on the hosting platform** calling
+      `POST /api/payments/reconcile`. Every fifteen minutes is ample; the
+      endpoint is safe at any frequency and safe to run twice at once.
+      An unset secret closes the scheduler path — it does not open it — so a
+      founder can still run the sweep by hand from a staff session, and until
+      the schedule exists a lost webhook is found by a human or not at all.
 
 ### The first week
 

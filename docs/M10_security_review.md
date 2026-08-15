@@ -111,40 +111,66 @@ with a five-attempt server lockout is what `staff-session.ts` implements.
   stale tablet backwards does not restore it. Step 33 of
   `docs/M1_offline_acceptance.md` tests this on hardware.
 
-**Outstanding:** revocation has no founder-facing button yet. It is a server-side
-state change and there is no dashboard control for it — a founder revoking a
-stolen tablet today needs an engineer. **This should be built before launch**;
-it is the one §10 control with no operator path.
+**~~Outstanding: revocation has no founder-facing button.~~ Closed.**
+
+`src/server/armory/devices.ts`, `POST /api/devices/:id` and the Tablets panel on
+the dashboard. A founder revokes with a reason, from the screen §12 already
+requires them to open every morning — no settings area to find while somebody is
+telling them a tablet is missing.
+
+Two decisions in it are worth knowing about:
+
+- **The token is destroyed, not flagged.** Setting `revoked_at` alone would be
+  enough for the wipe, since the sync endpoints check it. The hash is cleared as
+  well so the credential matches no row at all — the protection then does not
+  depend on every future endpoint author remembering to check a condition.
+- **Restore is not undo.** By the time a mislaid tablet is found it has very
+  likely already wiped itself, so restore clears the flag and the tablet still
+  needs a fresh token (`reissue`, a separate act, refused while the device is
+  revoked). Presenting it as undo would leave a founder holding a tablet that
+  claims to be registered and shows nothing.
 
 ---
 
 ## 5. Guest data — "A guest who does not join has provided data for a single visit. A defined retention position is required from counsel; build the deletion path now."
 
-**Partly met, and the gap is named.**
+**The path is built. The retention period is still with counsel.**
 
 The model is right: §3.1 makes applicant, guest and member states of one person,
 so there is no separate guest table to forget about, and `guest_visit_summary`
 counts visits across all hosts rather than per host.
 
-**The deletion path does not exist.** §10 says to build it now, and it has not
-been built. What makes this harder than it looks, and what the eventual
-implementation has to confront:
+**~~The deletion path does not exist.~~ Built.** `src/domain/erasure.ts` (the
+policy, pure and tested) and `src/server/armory/erasure.ts` (the write), reached
+through `GET`/`POST /api/people/:id/erase`.
 
-- A guest's `participations`, `waiver_signatures` and `rounds` are **append-only
-  and rejected for DELETE at the database level** (`drizzle/0002`). Deleting a
-  guest's personal data cannot mean deleting those rows.
-- So the deletion path has to be **redaction of `people`** — name, phone, email,
-  address, date of birth, photograph — leaving the activity rows attached to an
-  anonymised person. That preserves what the club's licence rests on (§3.4's
-  custody log names a counterparty) while removing what a guest is entitled to
-  have removed.
-- A guest who signed a waiver is a separate question for counsel: the signature
-  is the club's legal position if somebody was injured, and its retention period
-  is not the same as an address's.
+It is redaction, not deletion, and it could not have been anything else: a
+guest's `participations`, `waiver_signatures` and `rounds` are append-only and
+rejected for DELETE at the database level, and `people` is referenced with
+`ON DELETE RESTRICT`. So the identifying columns are cleared in place and
+`anonymised_at` is stamped — a column M0 added for exactly this. The activity
+survives as rows belonging to somebody nobody can identify.
 
-> **Blocked on counsel** (§14 lists this), but the redaction path can and should
-> be built against the shape above before the answer arrives — the answer changes
-> the retention period, not the mechanism.
+Three guards refuse, each about an obligation that outlives the request: a live
+membership, a firearm still recorded as issued to them (§3.4's log names a
+counterparty), and a firearm they own on the register.
+
+**Money owed deliberately does NOT refuse.** A data-protection request is not a
+debt-collection instrument, and the charge survives erasure as a row against an
+anonymised person — the club can still see the number, it just cannot ring them
+about it. That is a judgement worth a second opinion, and it is tested by name.
+
+**A guard worth knowing about:** a test compares `IDENTIFYING_FIELDS` and
+`RETAINED_FIELDS` against the real Drizzle columns of `people`, so a column
+added in two years that nobody classified fails the build rather than being
+silently left populated by an erasure that reports success.
+
+> **Still blocked on counsel:** the retention PERIOD.
+> `club_settings.guest_retention_days` is null, and null means the automatic
+> sweep finds nobody — erasing on a guessed schedule is the one mistake here
+> that cannot be undone. Erasure on request works today, which is the obligation
+> with a deadline. The waiver signature's own retention period is a separate
+> question for counsel.
 
 ---
 
@@ -226,9 +252,28 @@ go-live sheet.
 argued in the route: a non-2xx makes Paystack retry with backoff and eventually
 **disable the webhook**, and losing the endpoint is worse than losing one event —
 every payment is recoverable through §9's reconciliation job, and a disabled
-webhook is not recoverable at all. The consequence is that
-`stalePendingPayments` is not optional; it is the recovery path, and nothing
-schedules it yet. **Outstanding: schedule the reconciliation sweep.**
+webhook is not recoverable at all.
+
+**~~Outstanding: schedule the reconciliation sweep.~~ Built.**
+`src/server/armory/reconcile.ts`, reachable at `POST /api/payments/reconcile` by
+a scheduler holding `CRON_SECRET` or by a founder with a staff session. The
+founder path exists because the sweep is also the answer to "a member says they
+paid and it is not showing", asked at a counter and needing an answer now.
+
+The job **decides nothing**: for each stale payment it asks Paystack and acts on
+the answer. Not paid stays pending — an abandoned checkout is not a failure the
+club should assert. Unreachable is reported and retried, and the summary line
+never lets a run that confirmed nothing read like a clean sweep.
+
+Writing it surfaced a defect that would have made the sweep useless: the obvious
+implementation calls `recordGatewayPayment`, which inserts — and the pending row
+**already holds that `gateway_reference`**, so the insert would conflict, do
+nothing, and report a recovery that credited nobody. Recovery settles the
+existing row instead (`settlePendingPayment`, guarded on `status = 'pending'`).
+
+> **Still requires a human:** setting `CRON_SECRET` and adding the schedule on
+> the hosting platform. The endpoint is safe at any frequency — the guard makes
+> two schedulers, or a scheduler racing the webhook, produce one credit.
 
 **Two webhook endpoints share one Paystack account.** `/api/paystack/webhook`
 (bookings) and `/api/armory/paystack/webhook` (the club). Paystack allows one
@@ -248,14 +293,27 @@ waiting on it.
 
 ## Launch blockers, in one list
 
-| # | Blocker | Owner |
-| --- | --- | --- |
-| 1 | Encryption at rest, confirmed and recorded | Hosting decision |
-| 2 | Restore rehearsal executed and signed (`M10_restore_rehearsal.md`) | Engineering |
-| 3 | Object storage configured; licence scans, photographs and signature images off the application database | Hosting decision |
-| 4 | Founder-facing device revocation control | Engineering |
-| 5 | Guest data redaction path built | Engineering; retention period from counsel |
-| 6 | Payment reconciliation sweep scheduled | Engineering |
-| 7 | OTP rate limiting shared across instances, or one instance confirmed | Hosting decision |
+Three of the original seven were engineering work and are closed. The four that
+remain are decisions or acts outside this repository — which is the honest shape
+of a pre-launch list, and the reason none of them can be closed by writing more
+code.
+
+| # | Blocker | Owner | Status |
+| --- | --- | --- | --- |
+| 1 | Encryption at rest, confirmed and recorded | Hosting decision | **open** |
+| 2 | Restore rehearsal executed and signed (`M10_restore_rehearsal.md`) | Founder + engineering | **open** — protocol written, not run |
+| 3 | Object storage configured; licence scans, photographs and signature images off the application database | Hosting decision | **open** |
+| 4 | OTP rate limiting shared across instances, or one instance confirmed | Hosting decision | **open** |
+| 5 | Founder-facing device revocation control | Engineering | closed |
+| 6 | Guest data redaction path built | Engineering | closed — retention period still with counsel |
+| 7 | Payment reconciliation sweep | Engineering | closed — `CRON_SECRET` and a schedule still needed |
+
+**One consequence of closing #6 is worth carrying forward.** Erasure clears
+`photo_url` and `document_url` from the database and cannot delete the objects
+they point at, because there is no object storage yet. `erasedObjectKeys()`
+returns exactly what will need deleting, so the list does not have to be
+reconstructed later from a table that no longer holds the URLs — but until #3
+lands, an erased person's photograph still exists in whatever bucket the club
+eventually configures. **Whoever closes #3 owns closing that.**
 
 Reviewed by: \_\_\_\_\_\_\_\_\_\_\_\_\_\_ Date: \_\_\_\_\_\_\_\_ Against commit: \_\_\_\_\_\_\_\_

@@ -168,6 +168,20 @@ export const clubSettings = armory.table(
     /** §3.1. Null means a signature against the active version never expires. */
     waiverValidityDays: integer("waiver_validity_days"),
 
+    /**
+     * §10's guest data retention, in days since a person's last visit.
+     *
+     * Null means **no automatic erasure**, and that is the safe direction for
+     * the one setting here whose mistake cannot be undone: erasing on a guessed
+     * schedule destroys records the club may be required to hold. §14 has this
+     * blocked on counsel.
+     *
+     * An individual erasure on request is unaffected — that is the obligation
+     * with a deadline, and a founder can perform it today. This governs only
+     * the sweep. See src/domain/erasure.ts.
+     */
+    guestRetentionDays: integer("guest_retention_days"),
+
     /** §13, §14. The on-premises storage workflow sits behind this. */
     storageEnabled: boolean("storage_enabled").notNull().default(false),
 

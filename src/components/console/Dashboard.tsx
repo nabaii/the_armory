@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { DashboardView } from "@/server/armory/dashboard";
+import type { DeviceRecord } from "@/server/armory/devices";
 
 /**
  * THE OWNER DASHBOARD — §6.6, §11 M9.
@@ -152,8 +153,257 @@ export function Dashboard({
         </p>
       )}
 
-      {state.phase === "ready" && <Panels view={state.view} />}
+      {state.phase === "ready" && (
+        <>
+          <Panels view={state.view} />
+          {/* §10's revocation, on the only screen a founder opens. */}
+          <Devices staffToken={staffToken} />
+        </>
+      )}
     </section>
+  );
+}
+
+/* ============================================================================
+   §10 — THE TABLETS
+   ========================================================================= */
+
+/**
+ * The device register, and the button that takes one out of service.
+ *
+ * ===========================================================================
+ * WHY THIS IS ON THE DASHBOARD AND NOT ON A SETTINGS SCREEN
+ *
+ * Because of when it is used. A founder reaches for this having just been told a
+ * tablet is missing, and the measure of the control is how few decisions stand
+ * between that sentence and the tablet being dead. A settings area is a decision
+ * — which of these is the settings one — taken by somebody who is not calm.
+ *
+ * The dashboard is the screen a founder already opens every morning (§12
+ * requires them to, for the overrides), so it is the screen they can find
+ * without thinking.
+ *
+ * ===========================================================================
+ * REVOKING ASKS FOR A REASON AND NOTHING ELSE
+ *
+ * No confirmation dialogue. The reason field IS the confirmation: it cannot be
+ * submitted empty, so there is no path from a stray tap to a revoked tablet, and
+ * the friction buys something — §3.6's audit row carries the sentence, and "Ada
+ * reported it missing from the range office" is what makes that row worth having
+ * in six months.
+ *
+ * A confirm step on top would add a tap and record nothing.
+ */
+function Devices({ staffToken }: { staffToken: string | null }) {
+  const [devices, setDevices] = useState<DeviceRecord[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  /** A reissued credential, shown ONCE. Never re-fetchable. */
+  const [issued, setIssued] = useState<{ label: string; token: string } | null>(
+    null,
+  );
+
+  const load = useCallback(async () => {
+    if (!staffToken) return;
+
+    try {
+      const response = await fetch("/api/devices", {
+        headers: { authorization: `Bearer ${staffToken}` },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        setError("The tablet register could not be read.");
+        return;
+      }
+
+      const body = (await response.json()) as { devices: DeviceRecord[] };
+      setDevices(body.devices);
+      setError(null);
+    } catch {
+      setError("The tablet register could not be read.");
+    }
+  }, [staffToken]);
+
+  /* Wrapped rather than called directly: the state this sets belongs to the
+     fetch that resolves, not to the render that scheduled it. Same shape as the
+     dashboard's own effect above. */
+  useEffect(() => {
+    void (async () => {
+      await load();
+    })();
+  }, [load]);
+
+  const act = async (
+    deviceId: string,
+    event: "revoke" | "restore" | "reissue",
+    withReason?: string,
+  ) => {
+    if (!staffToken || busy) return;
+    setBusy(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/devices/${deviceId}`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${staffToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          /* §7: the caller generates the id, so a retry after a dropped
+             connection revokes once rather than twice. */
+          requestId: crypto.randomUUID(),
+          payload: { event, ...(withReason ? { reason: withReason } : {}) },
+        }),
+      });
+
+      const body = (await response.json().catch(() => null)) as {
+        reason?: unknown;
+        result?: { label?: string; token?: string };
+      } | null;
+
+      if (!response.ok) {
+        setError(
+          typeof body?.reason === "string"
+            ? body.reason
+            : "That could not be done just now.",
+        );
+        return;
+      }
+
+      if (event === "reissue" && body?.result?.token) {
+        setIssued({
+          label: body.result.label ?? "This tablet",
+          token: body.result.token,
+        });
+      }
+
+      setRevoking(null);
+      setReason("");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!devices) return null;
+
+  return (
+    <Panel heading="Tablets">
+      {error && (
+        <p
+          role="alert"
+          className="mb-3 border-l-8 border-[--color-ten-ring-deep] py-2 pl-3 font-medium"
+        >
+          {error}
+        </p>
+      )}
+
+      {issued && (
+        /**
+         * Shown once. Only the hash is stored, so this is the only moment the
+         * credential exists anywhere a person can read it — the same warning
+         * `scripts/seed.ts` prints, for the same reason.
+         */
+        <div className="mb-4 border-2 border-[--color-reticle-black] p-3">
+          <p className="font-medium">
+            {issued.label} — type this into the tablet now.
+          </p>
+          <p className="mt-1 font-mono text-sm break-all">{issued.token}</p>
+          <p className="mt-1 text-sm text-[--color-sight-ink]">
+            It is not stored and cannot be shown again. Reissue if it is lost.
+          </p>
+          <button
+            type="button"
+            onClick={() => setIssued(null)}
+            className="mt-2 rounded border border-[--color-reticle-black] px-3 py-2 text-sm font-medium"
+          >
+            I have typed it in
+          </button>
+        </div>
+      )}
+
+      <ul className="divide-y divide-[--color-terrazzo]">
+        {devices.map((device) => (
+          <li key={device.id} className="py-3">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2">
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">
+                  {device.label}{" "}
+                  <span className="font-normal text-[--color-sight-ink]">
+                    · {device.surface}
+                  </span>
+                </span>
+                {/* The one line §10's decision actually turns on: when it was
+                    last seen, and whether it is still live. */}
+                <span className="block text-sm text-[--color-sight-ink]">
+                  {device.line}
+                </span>
+              </span>
+
+              <span className="flex shrink-0 gap-2">
+                {device.revokedAt ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void act(device.id, "restore")}
+                    className="rounded border border-[--color-reticle-black] px-3 py-2 text-sm font-medium"
+                  >
+                    Restore
+                  </button>
+                ) : (
+                  <>
+                    {!device.hasToken && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void act(device.id, "reissue")}
+                        className="rounded border border-[--color-reticle-black] px-3 py-2 text-sm font-medium"
+                      >
+                        Issue a code
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setRevoking(revoking === device.id ? null : device.id)
+                      }
+                      className="rounded border-2 border-[--color-ten-ring-deep] px-3 py-2 text-sm font-medium"
+                    >
+                      Revoke
+                    </button>
+                  </>
+                )}
+              </span>
+            </div>
+
+            {revoking === device.id && (
+              /* The reason field is the confirmation — see the header. */
+              <div className="mt-3 flex flex-wrap gap-2">
+                <input
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="Why is this tablet being revoked?"
+                  className="min-w-0 flex-1 border border-[--color-reticle-black] px-3 py-2"
+                />
+                <button
+                  type="button"
+                  disabled={busy || reason.trim().length === 0}
+                  onClick={() => void act(device.id, "revoke", reason.trim())}
+                  className="border-2 border-[--color-ten-ring-deep] bg-[--color-ten-ring-deep] px-4 py-2 font-medium text-[--color-bone] disabled:border-[--color-sight-grey] disabled:bg-transparent disabled:text-[--color-sight-grey]"
+                >
+                  Revoke {device.label}
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }
 

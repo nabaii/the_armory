@@ -4,7 +4,8 @@
 -- §14 lists items that are the club's to decide and that it calls "not
 -- structurally blocking": the guest overage price, the roster cap, how long a
 -- waiver signature stays valid, whether on-premises storage is enabled, and
--- which disciplines demand a club sign-off.
+-- which disciplines demand a club sign-off. §10 adds one more that counsel
+-- owns: how long a guest's data is kept after their last visit.
 --
 -- Each of them was a literal in application code before this table, carrying
 -- the same comment — read it from the pack "so it changes without a deploy".
@@ -53,6 +54,10 @@ CREATE TABLE IF NOT EXISTS "armory"."club_settings" (
   "guest_overage_price_kobo" bigint,
   "roster_cap" integer,
   "waiver_validity_days" integer,
+  -- §10's guest data retention. NULL means no automatic erasure — the safe
+  -- direction for the one setting whose mistake cannot be undone. §14 has it
+  -- blocked on counsel. An erasure on request is unaffected.
+  "guest_retention_days" integer,
   "storage_enabled" boolean DEFAULT false NOT NULL,
   "disciplines_requiring_qualification" jsonb DEFAULT '[]'::jsonb NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,

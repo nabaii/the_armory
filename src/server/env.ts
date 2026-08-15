@@ -55,6 +55,18 @@ export const env = {
 
   /* Public origin, for absolute links in emails. */
   origin: read("NEXT_PUBLIC_ORIGIN"),
+
+  /**
+   * The shared secret a scheduler presents to §9's reconciliation endpoint.
+   *
+   * UNSET MEANS THE SCHEDULER PATH IS CLOSED, not that it is open. A founder
+   * with a staff session can still run the sweep by hand — see
+   * src/app/api/payments/reconcile/route.ts, which states the reasoning at
+   * length, because the other reading of an absent secret is the classic shape
+   * of an endpoint that is wide open on the one deployment where somebody
+   * forgot to set the variable.
+   */
+  cronSecret: read("CRON_SECRET"),
 } as const;
 
 export const isConfigured = {

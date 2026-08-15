@@ -289,6 +289,87 @@ export async function recordGatewayPayment(
 }
 
 /**
+ * Complete a payment the club had already started — §9's reconciliation.
+ *
+ * ===========================================================================
+ * WHY THIS EXISTS AND `recordGatewayPayment` COULD NOT BE REUSED
+ *
+ * The obvious implementation of the reconciliation sweep is to call
+ * `recordGatewayPayment` with the reference it just confirmed. It does not
+ * work, and the way it fails is silent.
+ *
+ * A payment the club started already HAS a row — `startPayment` wrote it as
+ * `pending` with the gateway reference on it. So the insert above conflicts
+ * with that very row, `ON CONFLICT DO NOTHING` does nothing, and the function
+ * returns `duplicate`. The sweep reports a recovery, no ledger entry is
+ * written, and the member's balance never moves.
+ *
+ * The two functions are answering different questions. `recordGatewayPayment`
+ * handles a payment the club is hearing about for the FIRST time, where the row
+ * and the idempotency are the same insert. This one handles a payment the club
+ * already knew about and is now learning the outcome of.
+ *
+ * ===========================================================================
+ * THE GUARD IS `status = 'pending'`, AND IT IS THE WHOLE IDEMPOTENCY
+ *
+ * Same shape as §3.4's ammunition reconciliation, for the same reason: the
+ * first delivery does the work, every later one matches no rows. Without it, a
+ * sweep racing the webhook — or two sweeps racing each other — would post two
+ * credits for one payment, which is the worst available failure in this file.
+ */
+export async function settlePendingPayment(
+  tx: ArmoryTx,
+  input: {
+    readonly paymentId: string;
+    readonly amountKobo: Kobo;
+    readonly paidAt: Date;
+  },
+): Promise<PaymentOutcome> {
+  const updated = await tx
+    .update(schema.payments)
+    .set({
+      status: "succeeded",
+      paidAt: input.paidAt,
+      /* The gateway is the authority on the amount. A member charged a
+         different figure from the one the club expected is a discrepancy worth
+         recording as what actually happened, not as what was intended. */
+      amountKobo: input.amountKobo,
+      updatedAt: input.paidAt,
+    })
+    .where(
+      and(
+        eq(schema.payments.id, input.paymentId),
+        eq(schema.payments.status, "pending"),
+      ),
+    )
+    .returning({
+      id: schema.payments.id,
+      personId: schema.payments.personId,
+      purpose: schema.payments.purpose,
+    });
+
+  const [payment] = updated;
+
+  if (!payment) {
+    /* Already settled by the webhook or an earlier sweep. A success — the
+       outcome the caller wanted is the state the row is in. */
+    return { kind: "duplicate", paymentId: input.paymentId };
+  }
+
+  const accountId = await ensureAccount(tx, payment.personId);
+
+  await postToLedger(tx, {
+    accountId,
+    amountKobo: input.amountKobo,
+    direction: "credit",
+    referenceType: `payment.${payment.purpose}`,
+    referenceId: payment.id,
+  });
+
+  return { kind: "recorded", paymentId: payment.id };
+}
+
+/**
  * Mark a charge settled and debit the account for it.
  *
  * ===========================================================================
@@ -607,6 +688,15 @@ export type StalePayment = {
   readonly personId: string;
   readonly gatewayReference: string | null;
   readonly amountKobo: number;
+  /**
+   * What the club started the transaction FOR.
+   *
+   * Carried so a recovered payment is recorded under the purpose the club
+   * itself chose, rather than reconstructed from the gateway. §6.6 groups
+   * revenue on this column, and a recovered payment filed as "other" is a hole
+   * in that panel that nobody would trace back to here.
+   */
+  readonly purpose: PaymentPurpose;
   readonly createdAt: Date;
 };
 
@@ -641,6 +731,7 @@ export async function stalePendingPayments(
       personId: schema.payments.personId,
       gatewayReference: schema.payments.gatewayReference,
       amountKobo: schema.payments.amountKobo,
+      purpose: schema.payments.purpose,
       createdAt: schema.payments.createdAt,
     })
     .from(schema.payments)
