@@ -1,4 +1,5 @@
 import type { Config } from "drizzle-kit";
+import { tlsOptions } from "./src/db/tls";
 
 /**
  * Load `.env.local` before the credentials below are read.
@@ -48,6 +49,19 @@ export default {
   dialect: "postgresql",
   dbCredentials: {
     url: process.env.DATABASE_URL ?? "",
+    /**
+     * THE SAME TLS RULE THE APPLICATION USES — src/db/tls.ts.
+     *
+     * Without this, migrations against any managed provider that requires TLS
+     * fail as `ECONNRESET`, which drizzle-kit swallows into exit code 1 with an
+     * empty stderr and a spinner that just stops. The database stays empty and
+     * nothing says why. That is how this was found.
+     *
+     * §10 wants TLS on every connection carrying this data, and a migration
+     * runner connects to the same database with the same credentials as the
+     * application — there was never a reason for it to be the exception.
+     */
+    ssl: tlsOptions(process.env.DATABASE_URL ?? ""),
   },
   /* Fail loudly on a destructive diff rather than dropping a column of scores. */
   strict: true,

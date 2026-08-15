@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { tlsOptions } from "./tls";
 
 /**
  * ONE POOL, ONE DATABASE, TWO SCHEMAS.
@@ -109,62 +110,6 @@ export function getPool(): Pool {
   });
 
   return pool;
-}
-
-/**
- * Whether to demand TLS.
- *
- * §10 requires "TLS in transit", and this data is identity documents, home
- * addresses and firearm licences. The exception is a local connection during
- * development, where there is no certificate to verify and no network to
- * intercept. Anything else — including a hostname that merely LOOKS local —
- * gets TLS with verification on, rather than the `rejectUnauthorized: false`
- * that turns TLS into decoration.
- */
-function needsTls(url: string): boolean {
-  if (process.env.NODE_ENV !== "production") {
-    return !/@(localhost|127\.0\.0\.1|::1|host\.docker\.internal)[:/]/.test(url);
-  }
-  return true;
-}
-
-/**
- * The TLS configuration, with a supported way to trust a provider's own CA.
- *
- * ===========================================================================
- * WHY THIS EXISTS: THE THING SOMEBODY WOULD OTHERWISE DO AT 2AM
- *
- * `rejectUnauthorized: true` verifies the server's certificate against Node's
- * built-in CA bundle. Several managed Postgres providers — Render among them —
- * present certificates that bundle does not contain, so a correctly configured
- * deployment can fail its first connection with:
- *
- *   SELF_SIGNED_CERT_IN_CHAIN
- *   UNABLE_TO_VERIFY_LEAF_SIGNATURE
- *
- * There is exactly one search result away from that error, and it is
- * `rejectUnauthorized: false`. That does not fix a certificate problem — it
- * removes the check that noticed one, leaves the connection encrypted against
- * a passive listener and wide open to an active one, and does it on the link
- * carrying every member's home address and firearm licence.
- *
- * So the correct fix is available as configuration rather than as a code edit
- * made under deployment pressure: set `DATABASE_CA_CERT` to the provider's CA
- * certificate (PEM), and verification continues against THAT.
- *
- * There is deliberately no environment variable that disables verification. If
- * one is ever genuinely needed, it should be added here, in this file, with a
- * comment arguing for it — not discovered in a dashboard by whoever is on call.
- */
-function tlsOptions(url: string) {
-  if (!needsTls(url)) return undefined;
-
-  /* Render and several others hand the CA over as a single-line PEM with
-     literal `\n`. Both forms are accepted so pasting either into a dashboard
-     works. */
-  const ca = process.env.DATABASE_CA_CERT?.trim().replace(/\\n/g, "\n");
-
-  return ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true };
 }
 
 /**
