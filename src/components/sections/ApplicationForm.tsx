@@ -12,7 +12,8 @@ import {
   TextInput,
 } from "@/components/ui/Form";
 import { Turnstile } from "@/components/ui/Turnstile";
-import { submitApplication, emptyIntakeState } from "@/app/actions/intake";
+import { submitApplication } from "@/app/actions/intake";
+import { emptyIntakeState } from "@/lib/intake-state";
 import { routes } from "@/lib/site";
 import type { Tier } from "@/lib/content";
 

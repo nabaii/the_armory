@@ -35,7 +35,7 @@
 
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { validateBookingRequest, isHoneypotTripped, type FieldErrors } from "@/server/validation";
+import { validateBookingRequest, isHoneypotTripped } from "@/server/validation";
 import { bookingConfig, bookingIsLive } from "@/content/booking";
 import { findSlot } from "@/server/slots";
 import { bookingStore, HOLD_TTL_MS } from "@/server/booking-store";
@@ -46,13 +46,7 @@ import { isConfigured, env } from "@/server/env";
 import { log, redactEmail } from "@/server/log";
 import { routes } from "@/lib/site";
 
-export type BookingState = {
-  ok: boolean;
-  errors?: FieldErrors;
-  formError?: string;
-};
-
-export const emptyBookingState: BookingState = { ok: false };
+import type { BookingState } from "@/lib/booking-state";
 
 export async function requestBooking(
   _previous: BookingState,

@@ -11,7 +11,8 @@ import {
   TextInput,
 } from "@/components/ui/Form";
 import { Turnstile } from "@/components/ui/Turnstile";
-import { requestBooking, emptyBookingState } from "@/app/actions/booking";
+import { requestBooking } from "@/app/actions/booking";
+import { emptyBookingState } from "@/lib/booking-state";
 import { routes } from "@/lib/site";
 
 /* ============================================================================

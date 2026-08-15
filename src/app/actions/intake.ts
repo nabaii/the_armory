@@ -28,8 +28,8 @@ import {
   validateGroupEnquiry,
   validateWaitlist,
   isHoneypotTripped,
-  type FieldErrors,
 } from "@/server/validation";
+import type { IntakeState } from "@/lib/intake-state";
 import { deliver, sendApplicantConfirmation } from "@/server/intake";
 import { canAcceptSubmissions, env } from "@/server/env";
 import { verifyTurnstile } from "@/server/turnstile";
@@ -37,20 +37,8 @@ import { LIMITS, clientKey, rateLimit } from "@/server/rate-limit";
 import { log } from "@/server/log";
 import { routes } from "@/lib/site";
 
-/**
- * What every intake form renders from.
- *
- * `formError` is for problems that are not a specific field's fault — rate
- * limiting, or an unconfigured pipeline. It is always accompanied by an
- * instruction the visitor can act on.
- */
-export type IntakeState = {
-  ok: boolean;
-  errors?: FieldErrors;
-  formError?: string;
-};
-
-export const emptyIntakeState: IntakeState = { ok: false };
+/* The state every intake form renders from is in @/lib/intake-state — a
+   `"use server"` file may export only async functions. */
 
 /* ---------------------------------------------------------------------------
    Shared preamble: rate limit, honeypot, bot check, delivery readiness.

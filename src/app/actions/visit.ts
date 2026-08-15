@@ -45,13 +45,7 @@ import { completeVisit } from "@/server/armory/visit";
 import { LIMITS, clientKey, rateLimit } from "@/server/rate-limit";
 import type { FieldErrors } from "@/server/validation";
 
-export type VisitState = {
-  ok: boolean;
-  errors?: FieldErrors;
-  formError?: string;
-};
-
-export const emptyVisitState: VisitState = { ok: false };
+import type { VisitState } from "@/lib/visit-state";
 
 /** E.164, the armoury's account identifier (§3.1). */
 const E164 = /^\+[1-9]\d{7,14}$/;

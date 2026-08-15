@@ -45,15 +45,7 @@ import { record } from "@/server/armory/record";
 import { PostgresRecordStore } from "@/server/armory/postgres-store";
 import { and, eq, gte } from "drizzle-orm";
 
-export type HostingState = {
-  ok: boolean;
-  message?: string;
-  formError?: string;
-  /** §12: the price, shown before the member commits, never after. */
-  overagePrompt?: { priceLabel: string; guestNumber: number };
-};
-
-export const emptyHostingState: HostingState = { ok: false };
+import type { HostingState } from "@/lib/hosting-state";
 
 const store = new PostgresRecordStore();
 

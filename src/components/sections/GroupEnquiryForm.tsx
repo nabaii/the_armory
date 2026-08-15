@@ -11,7 +11,8 @@ import {
   TextInput,
 } from "@/components/ui/Form";
 import { Turnstile } from "@/components/ui/Turnstile";
-import { submitGroupEnquiry, emptyIntakeState } from "@/app/actions/intake";
+import { submitGroupEnquiry } from "@/app/actions/intake";
+import { emptyIntakeState } from "@/lib/intake-state";
 import { routes } from "@/lib/site";
 
 /* ============================================================================

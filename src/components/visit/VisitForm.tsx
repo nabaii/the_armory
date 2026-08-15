@@ -3,7 +3,8 @@
 import { useActionState } from "react";
 import { Field, FormStatus, SubmitButton, TextInput } from "@/components/ui/Form";
 import { Body, Caption } from "@/components/ui/Text";
-import { emptyVisitState, submitVisit } from "@/app/actions/visit";
+import { submitVisit } from "@/app/actions/visit";
+import { emptyVisitState } from "@/lib/visit-state";
 
 /**
  * THE GUEST FORM — §6.3.

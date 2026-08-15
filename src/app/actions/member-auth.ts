@@ -44,13 +44,10 @@ import {
 } from "@/server/armory/member-password";
 import { resolveArmoryMember } from "@/server/armory/member-session";
 import { safeReturnTo, startSession } from "@/server/auth/session";
-
-export type MemberSignInState = {
-  ok: boolean;
-  error?: string;
-};
-
-export const emptyMemberSignInState: MemberSignInState = { ok: false };
+import type {
+  ChangePasswordState,
+  MemberSignInState,
+} from "@/lib/member-auth-state";
 
 export async function signInWithPassword(
   _previous: MemberSignInState,
@@ -121,14 +118,6 @@ export async function signInWithPassword(
 /* ============================================================================
    CHANGING IT
    ========================================================================= */
-
-export type ChangePasswordState = {
-  ok: boolean;
-  error?: string;
-  message?: string;
-};
-
-export const emptyChangePasswordState: ChangePasswordState = { ok: false };
 
 /**
  * Change your own password.

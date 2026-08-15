@@ -5,7 +5,8 @@ import { cn } from "@/lib/cn";
 import { Caption } from "@/components/ui/Text";
 import { Field, FormStatus, SubmitButton, TextInput } from "@/components/ui/Form";
 import { Turnstile } from "@/components/ui/Turnstile";
-import { joinWaitlist, emptyIntakeState } from "@/app/actions/intake";
+import { joinWaitlist } from "@/app/actions/intake";
+import { emptyIntakeState } from "@/lib/intake-state";
 import { routes } from "@/lib/site";
 
 /* ============================================================================

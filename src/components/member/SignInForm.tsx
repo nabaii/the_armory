@@ -3,7 +3,8 @@
 import { useActionState } from "react";
 import { Field, FormStatus, SubmitButton, TextInput } from "@/components/ui/Form";
 import { Turnstile } from "@/components/ui/Turnstile";
-import { requestSignInLink, emptySignInState } from "@/app/actions/auth";
+import { requestSignInLink } from "@/app/actions/auth";
+import { emptySignInState } from "@/lib/sign-in-state";
 
 /**
  * Sign-in request form.
