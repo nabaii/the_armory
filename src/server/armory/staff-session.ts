@@ -1,10 +1,10 @@
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
-import { promisify } from "node:util";
+import { randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { getArmoryDb, schema } from "@/db/armory/client";
 import type { StaffRole } from "@/domain/enums";
 import { uuidv7 } from "@/lib/uuidv7";
 import { hashDeviceToken } from "@/server/sync/device-auth";
+import { hashSecret, verifySecret } from "./kdf";
 
 /**
  * THE STAFF SESSION — §10, and the thing every `actor_staff_id` column has been
@@ -64,16 +64,6 @@ import { hashDeviceToken } from "@/server/sync/device-auth";
  * throttle below is.
  */
 
-const scrypt = promisify(scryptCallback) as (
-  password: string,
-  salt: Buffer,
-  keylen: number,
-) => Promise<Buffer>;
-
-/** Deliberately slow. Tuned for a desk unlock, not for a hot path. */
-const SCRYPT_KEY_BYTES = 64;
-const SALT_BYTES = 16;
-
 /**
  * How long a session stands. §10 says "short".
  *
@@ -96,38 +86,18 @@ const MAX_PIN_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
 /* ============================================================================
-   HASHING
+   HASHING — re-exported, implemented once in ./kdf.ts
+
+   A PIN and a member's password need the same memory-hard hash with the same
+   parameters, and two copies of scrypt in one codebase is two sets of
+   parameters that eventually disagree. The implementation moved to ./kdf.ts
+   when the member password login arrived; these aliases stay so nothing that
+   already imported them had to change, and because `hashPin` reads better than
+   `hashSecret` at a PIN call site.
    ========================================================================= */
 
-/**
- * Hash a PIN for storage. Format: `scrypt:<salt hex>:<key hex>`.
- *
- * Self-describing so the algorithm can be changed later without guessing what
- * produced an existing row — a stored hash that does not say what made it is a
- * migration nobody can perform safely.
- */
-export async function hashPin(pin: string): Promise<string> {
-  const salt = randomBytes(SALT_BYTES);
-  const key = await scrypt(pin, salt, SCRYPT_KEY_BYTES);
-  return `scrypt:${salt.toString("hex")}:${key.toString("hex")}`;
-}
-
-/**
- * Verify a PIN against a stored hash.
- *
- * Constant-time comparison. The timing signal from a byte-by-byte compare is
- * small but the search space here is a million, and a million guesses is exactly
- * the scale at which a small signal stops being theoretical.
- */
-export async function verifyPin(pin: string, stored: string): Promise<boolean> {
-  const [algorithm, saltHex, keyHex] = stored.split(":");
-  if (algorithm !== "scrypt" || !saltHex || !keyHex) return false;
-
-  const expected = Buffer.from(keyHex, "hex");
-  const actual = await scrypt(pin, Buffer.from(saltHex, "hex"), expected.length);
-
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
+export const hashPin = hashSecret;
+export const verifyPin = verifySecret;
 
 /* ============================================================================
    THE UNLOCK

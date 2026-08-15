@@ -224,6 +224,24 @@ export async function erasePerson(
     );
 
   /**
+   * The password goes with them.
+   *
+   * `member_credentials` cascades on `people`, so a DELETE would take it — but
+   * erasure does not delete, it redacts in place, and a cascade that never
+   * fires is a guarantee that does not exist. Deleted explicitly here.
+   *
+   * This is the case the "one table per concern" decision in drizzle/0007 was
+   * made for. Had the password been a column on `people`, it would have had to
+   * be classified as identifying or retained by the test in
+   * src/domain/erasure.ts — and "retained" would have left a working credential
+   * on a person the club had promised to forget, with the erasure reporting
+   * success.
+   */
+  await tx
+    .delete(schema.memberCredentials)
+    .where(eq(schema.memberCredentials.personId, input.personId));
+
+  /**
    * Licence documents lose their URL too.
    *
    * §10 makes a licence scan the most restricted thing the club holds —

@@ -115,6 +115,23 @@ export const LIMITS = {
    * to hammer the database from anywhere with a URL.
    */
   guestToken: { limit: 30, windowMs: 10 * 60_000 },
+
+  /**
+   * Member password sign-in. §10's "front door to every account", by another
+   * name — §9 reserves that phrase for OTP, and until OTP exists this is it.
+   *
+   * TIGHTER THAN THE OTHERS, AND FOR THE OPPOSITE REASON TO `guestToken`.
+   * A guest token is 256 bits and guessing was never the threat; a password on
+   * a Nigerian mobile number is guessable twice over — the number space is
+   * small and people choose bad passwords. The per-account lockout in
+   * member-password.ts stops five guesses at ONE member; this stops a hundred
+   * guesses spread across a hundred members, which is the attack that lockout
+   * cannot see.
+   *
+   * Ten in ten minutes is more than a member with a forgotten password will use
+   * and far less than a list-walker needs.
+   */
+  memberSignIn: { limit: 10, windowMs: 10 * 60_000 },
 } as const;
 
 /** Exposed for tests. */

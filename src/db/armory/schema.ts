@@ -570,6 +570,92 @@ export const licences = armory.table(
   ],
 );
 
+/**
+ * A MEMBER'S PASSWORD — the portal sign-in for people the club already knows.
+ *
+ * ===========================================================================
+ * WHY A CREDENTIAL TABLE AND NOT A COLUMN ON `people`
+ *
+ * Three reasons, and the third is the one that would have bitten.
+ *
+ * A password is a property of an ACCOUNT, not of a human. §3.1 makes `people`
+ * the club's record of a person — applicant, guest or member — and most rows in
+ * it will never have a credential at all. A guest who shot once has a person
+ * row and no business having a password column.
+ *
+ * The throttle needs columns of its own (`failed_count`, `locked_until`), and
+ * putting authentication state on `people` would mean a failed sign-in writing
+ * to the table the desk reads to check somebody in.
+ *
+ * And §10's erasure redacts `people` IN PLACE. `src/domain/erasure.ts` carries
+ * a test that every column of `people` is classified as identifying or
+ * retained, so a password column added there would have to be classified — and
+ * "retained" would leave a working credential on an erased person while the
+ * erasure reported success. A separate table is deleted outright by
+ * `erasePerson`, which is the unambiguous answer.
+ *
+ * ===========================================================================
+ * THIS IS AN INTERIM CREDENTIAL. §9 WANTS OTP.
+ *
+ *   §9, SMS: "One-time passcodes only. A Nigerian provider with acceptable
+ *    delivery rates. Test on all major local networks before launch; THIS IS
+ *    THE FRONT DOOR TO EVERY ACCOUNT."
+ *   §7: "POST /auth/otp/request, /auth/otp/verify"
+ *
+ * The specification's intended sign-in is a one-time passcode by SMS, and no
+ * SMS provider is configured yet (docs/M10_security_review.md lists it). A
+ * password is what lets the club test the member portal end to end before that
+ * lands, and it is deliberately built so it can be switched off rather than
+ * unpicked: nothing else in the system reads this table, and deleting every row
+ * in it disables password sign-in without touching a person, a membership or a
+ * session.
+ *
+ * When OTP arrives, this table is dropped or left dormant. It is not a
+ * foundation anything else is built on.
+ */
+export const memberCredentials = armory.table(
+  "member_credentials",
+  {
+    id: id(),
+
+    /**
+     * One credential per person, and the unique index is what enforces it.
+     *
+     * `cascade` because a credential without a person is not a credential —
+     * unlike most references in this schema, there is nothing here worth
+     * keeping for its own sake and nothing an audit would want to read later.
+     * The audit row for a sign-in lives in `audit_log`, which is append-only.
+     */
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+
+    /** `scrypt:<salt>:<key>`. See src/server/armory/kdf.ts. */
+    passwordHash: text("password_hash").notNull(),
+
+    /**
+     * True while the member is still on a password somebody else chose.
+     *
+     * A founder setting a password for a member to test with, or resetting one
+     * for a member who forgot, is handing over a secret that two people now
+     * know. The portal asks them to change it; until they do, this says so.
+     */
+    mustChange: boolean("must_change").notNull().default(true),
+
+    /* The throttle. Mirrors `staff_users` — see the note there on why a lockout
+       that triggers on ordinary human error is a lockout that gets designed
+       around. */
+    failedCount: integer("failed_count").notNull().default(0),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+
+    lastSignedInAt: timestamp("last_signed_in_at", { withTimezone: true }),
+
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("member_credentials_person_key").on(t.personId)],
+);
+
 export const staffRole = armory.enum("staff_role", STAFF_ROLES);
 
 /**

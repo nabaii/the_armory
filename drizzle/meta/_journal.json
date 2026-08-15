@@ -50,6 +50,13 @@
       "when": 1786692973995,
       "tag": "0006_club_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786799142794,
+      "tag": "0007_member_passwords",
+      "breakpoints": true
     }
   ]
 }

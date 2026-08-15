@@ -87,6 +87,52 @@ holds and it is the one in this review.
 **Outstanding:** PIN length and rotation policy are the club's to set. Six digits
 with a five-attempt server lockout is what `staff-session.ts` implements.
 
+### Added since: the member password (interim)
+
+§9's front door is an SMS passcode and no SMS provider is configured, so members
+sign in with a phone number and a password until it lands
+(`drizzle/0007`, `src/server/armory/member-password.ts`). It is reviewed here
+because it is a credential, and a new credential is a new front door.
+
+- **The identifier is the phone, not the email.** §3.1 makes `people.phone`
+  unique and NOT NULL and leaves `people.email` nullable. Matching a signed-in
+  email against a staff-typed `people.email` was considered and **rejected**:
+  that column is never verified by anybody, and one transposed character landing
+  on a real address hands a stranger a member's bookings, allowance, history and
+  balance — indistinguishable, from the inside, from the right person signing in.
+- **Two throttles, defending different walls.** A per-account lockout (five
+  attempts, fifteen minutes) stops guessing at one member. A per-caller rate
+  limit stops one password being tried against a hundred Nigerian mobile
+  numbers, which the account lockout cannot see. Both are needed; neither is
+  sufficient.
+- **The club generates the password, not the founder.** `POST
+  /api/people/:id/password` mints it from a CSPRNG and there is no way to supply
+  one — a founder typing passwords for a hundred members types one memorable
+  password a hundred times, which is §10's shared login arriving through the
+  member door.
+- **One sentence for every failure.** Wrong password, unknown number, no
+  membership — all answer "Those details do not match a membership." A specific
+  refusal on an unauthenticated form is an oracle for who belongs to the club,
+  and the roster is the thing a members' club does not publish. The lockout
+  message is the sole exception, because a locked-out member cannot act on the
+  generic one.
+- **The password reaches the write receipt, and not the audit log.** §7 makes a
+  replay reproduce the first result, so a retried issuance must return the same
+  code rather than silently resetting a credential the member is holding.
+  `audit_log` is append-only and unredactable, so it records only that a password
+  was issued.
+
+> **Switchable off rather than unpicked.** Nothing else reads
+> `armory.member_credentials`. When OTP lands, deleting every row disables
+> password sign-in without touching a person, a membership or a session — and
+> `DELETE /api/people/:id/password` is the per-member version of the same.
+
+> **One residual risk, stated:** the seed writes a known password for twenty
+> staging members. It is the only credential in this repository written from a
+> literal. Safe because those hundred people are invented; **it must never be
+> run against production**, which is already true of the whole script and is
+> restated in the go-live sheet.
+
 ---
 
 ## 4. Device revocation — "A lost or stolen tablet can be revoked server-side, and its cached day pack rendered unusable on next launch."

@@ -48,6 +48,7 @@ Each officer, unaided, against the seeded staging club (`npm run db:seed`):
 | --- | --- | --- | --- |
 | 1 | Enrol a tablet from a registration code | — | \_\_\_ |
 | 2 | Sign in as themselves | — | \_\_\_ |
+| 2b | A MEMBER signs in at `/sign-in/member` with phone + password | — | did they find it from `/sign-in` unaided? |
 | 3 | Check in a member with a clear row | **15 s** | \_\_\_ s |
 | 4 | Check in a guest **whose host has not arrived** | — | did they read the reason aloud correctly? |
 | 5 | Check in the host, then the guest | — | **did the guest's row clear without a reload?** |
@@ -156,6 +157,11 @@ update, not a deploy.
       until these exist, and the booking screen says so rather than showing a
       plausible week nobody chose.
 - [ ] Staff users with individual PINs. One per named person (§10).
+- [ ] **Member passwords issued**, if the club is opening before §9's SMS
+      provider lands. `POST /api/people/:id/password` mints one per member; it
+      is shown once and the member is asked to change it on first sign-in.
+      ⚠️ **Do not run `npm run db:seed` against production.** It writes a known
+      password for twenty members. It is staging data and always has been.
 - [ ] The firearm register, with serials. Every firearm's opening custody event.
 - [ ] Ammunition lots, with real received quantities.
 - [ ] Founding members, with `is_founding` set.

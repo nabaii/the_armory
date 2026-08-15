@@ -185,7 +185,13 @@ export function TextInput({
   ...rest
 }: {
   ids: FieldIds;
-  type?: "text" | "email" | "tel" | "number" | "date";
+  /**
+   * `password` was added when the member sign-in arrived. It is a narrow union
+   * rather than `string` on purpose — the point is that a field cannot be given
+   * a type nobody designed the control for, and the list growing by one when a
+   * real need appears is that working, not failing.
+   */
+  type?: "text" | "email" | "tel" | "number" | "date" | "password";
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "id" | "type">) {
   return (
     <input

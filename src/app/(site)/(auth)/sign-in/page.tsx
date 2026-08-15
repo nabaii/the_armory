@@ -44,7 +44,28 @@ export default async function SignInPage({
             own domain that lands somewhere else. */}
         <SignInForm next={safeReturnTo(next)} className="max-w-[34rem]" />
 
+        {/**
+         * The members' door, offered before the caveats rather than after.
+         *
+         * An email link proves control of an ADDRESS. It cannot say which
+         * member that is — §3.1 makes the phone the club's identifier and
+         * leaves the email nullable — so a member who signs in this way reaches
+         * a portal that correctly reports no membership. Sending them here
+         * afterwards, in small print, is discovering the wrong door by using it.
+         */}
         <Caption className="mt-6 max-w-[68ch]">
+          Already a member of the club?{" "}
+          <a
+            href={routes.signInMember}
+            className="underline decoration-1 underline-offset-2"
+          >
+            Sign in with your phone number and password
+          </a>{" "}
+          — that is the one that opens bookings, your allowance and your
+          account.
+        </Caption>
+
+        <Caption className="mt-3 max-w-[68ch]">
           Sign-in links work once and expire after fifteen minutes. If you are
           not a member yet, there is nothing to sign in to —{" "}
           <a

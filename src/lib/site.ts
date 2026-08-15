@@ -110,6 +110,10 @@ export const routes = {
   portalDocuments: "/portal/documents",
   /** §6.2 "Account" — charges, payments, balance, renewal, tier privileges. */
   portalAccount: "/portal/account",
+  /** Change your own password. Interim, until §9's OTP replaces it. */
+  portalPassword: "/portal/password",
+  /** Sign in as an existing member, by phone and password. Interim — see §9. */
+  signInMember: "/sign-in/member",
   leagueNew: "/portal/leagues/new",
   leagueJoin: "/portal/leagues/join",
   /** A specific league. Private — the repository scopes reads by membership. */

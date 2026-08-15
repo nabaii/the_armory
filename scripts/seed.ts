@@ -65,6 +65,7 @@
 import type { InferInsertModel } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import { getArmoryDb, schema } from "@/db/armory/client";
+import { hashSecret } from "@/server/armory/kdf";
 import { hashPin } from "@/server/armory/staff-session";
 
 /* ---------------------------------------------------------------------------
@@ -1159,6 +1160,39 @@ async function seed() {
     await insert(schema.accountTransactions, ledgerRows),
   );
 
+  /* ------------------------------------------------- MEMBER PASSWORDS
+     The interim sign-in (drizzle/0007), so the portal can be tested end to end
+     before §9's SMS provider lands.
+
+     ONE KNOWN PASSWORD, ON STAGING ONLY, PRINTED AT THE END. This is seed data
+     for a staging club and it is the only place in this repository where a
+     credential is written from a literal. It is safe here for the same reason
+     the whole script is safe here — §2.1's fixture is a hundred invented people
+     with placeholder addresses — and it would not be safe anywhere else.
+
+     `must_change` is left FALSE for these, unlike every real issuance. A tester
+     signing in as member 0 wants the portal, not a change-password screen; a
+     real member gets the opposite, because a password the founder set is a
+     password two people know. */
+  const TEST_PASSWORD = "range-day-2026";
+
+  const credentialRows = await Promise.all(
+    members.slice(0, 20).map(async (person, i) => ({
+      id: uuidv7At(midnight.getTime() - (150 - i) * DAY),
+      personId: person.id,
+      passwordHash: await hashSecret(TEST_PASSWORD),
+      mustChange: false,
+      failedCount: 0,
+      lockedUntil: null,
+      lastSignedInAt: null,
+    })),
+  );
+
+  step(
+    "member passwords (first 20 members, staging only)",
+    await insert(schema.memberCredentials, credentialRows),
+  );
+
   /* -------------------------------------------------------------- DEVICES
      §3.1 and §10. Two devices with real tokens, printed once — this is what lets a
      tablet be enrolled and the §8.5 protocol run.
@@ -1218,6 +1252,24 @@ async function seed() {
     "\n  The PIN is the second factor, not a password: it is only accepted on a\n" +
       "  registered device (drizzle/0004_staff_sessions.sql). Five wrong attempts\n" +
       "  lock the account for fifteen minutes.\n",
+  );
+
+  console.log("Member sign-in — the interim password path (drizzle/0007):\n");
+  console.log(`  Password:  ${TEST_PASSWORD}`);
+  console.log("  Members:   the first 20, by their phone number\n");
+  /* The same formula the people insert uses. Derived rather than stored,
+     because `Person` deliberately holds only what the seed needs to correlate
+     rows — and a second copy of the phone here is a second thing to keep in
+     step with §3.1's E.164 format. */
+  members.slice(0, 3).forEach((person, i) => {
+    const phone = `+23480${String(10000000 + i).slice(-8)}`;
+    console.log(`             ${phone}   ${person.first} ${person.last}`);
+  });
+  console.log(
+    "\n  Sign in at /sign-in/member. STAGING ONLY — this is the one place in\n" +
+      "  the repository a credential is written from a literal, and it is safe\n" +
+      "  only because these hundred people are invented. §9 replaces all of it\n" +
+      "  with an SMS passcode.\n",
   );
 
   console.log("Seeded. Re-running changes nothing — ids are deterministic.\n");
