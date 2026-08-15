@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Bootstrap credentials — the only plaintext copy of a real club's
+# password, officer PIN and device code. Never committed.
+.bootstrap-credentials.txt
