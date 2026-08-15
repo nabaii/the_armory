@@ -57,13 +57,6 @@
       "when": 1786799142794,
       "tag": "0007_member_passwords",
       "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1786826974313,
-      "tag": "0008_email_verification",
-      "breakpoints": true
     }
   ]
 }
