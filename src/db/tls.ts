@@ -42,7 +42,69 @@ export function needsTls(url: string): boolean {
 }
 
 /**
+ * The hostname a connection string names, or null if it cannot be read.
+ *
+ * `new URL` handles the percent-encoded passwords managed providers generate;
+ * the regex is the fallback for a string it refuses, so a malformed URL degrades
+ * to "not private" — the safe direction, because the fallback decides whether a
+ * certificate gets verified.
+ */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname || null;
+  } catch {
+    return /@([^/:?]+)/.exec(url)?.[1] ?? null;
+  }
+}
+
+/**
+ * Whether the host is reachable only from inside a provider's private network.
+ *
+ * The test is that the name has no dots. A single-label hostname has no public
+ * DNS answer and no route from the internet — Render's `dpg-xxxxx-a`, a Docker
+ * service name, a Kubernetes short name. A host with a dot is treated as public
+ * even when it looks internal, because being wrong in that direction only costs
+ * a verified connection, while being wrong the other way costs the check itself.
+ */
+export function isPrivateHost(url: string): boolean {
+  const host = hostOf(url);
+  return host !== null && !host.includes(".");
+}
+
+/**
  * TLS options for `pg`, or `undefined` for a local connection.
+ *
+ * ===========================================================================
+ * THE ARGUMENT THIS FILE ASKED FOR, MADE
+ *
+ * The note below says there is deliberately no way to disable verification, and
+ * that if one is ever genuinely needed it should be added HERE with an argument
+ * rather than found in a dashboard by whoever is on call. This is that argument.
+ *
+ * Render's managed Postgres presents a bare self-signed certificate. Asked
+ * directly, the server reports `ssl_ca_file` empty — there is no chain and no
+ * published CA, which is why the dashboard offers no certificate to download.
+ * `rejectUnauthorized: true` therefore cannot succeed against it by any
+ * configuration; the sign-in path failed with "self-signed certificate" on every
+ * attempt, and no value of `DATABASE_CA_CERT` obtainable from the provider fixes
+ * it. Only the certificate the server itself presents would, by pinning.
+ *
+ * So the exception is drawn as narrowly as the failure: it applies ONLY to a
+ * single-label hostname, which by construction is a private-network name with no
+ * route from the internet. Every host with a dot in it — every external endpoint,
+ * every connection that leaves the provider — keeps full verification and fails
+ * closed exactly as before.
+ *
+ * What is given up, stated plainly: on that private link the connection is
+ * encrypted but not authenticated. Passive interception is still defeated; an
+ * attacker already positioned inside the provider's private network is not. That
+ * is a real reduction and it is the reason this is scoped to a hostname that
+ * cannot be reached from outside, rather than to an environment variable that
+ * could be set anywhere.
+ *
+ * `DATABASE_CA_CERT` still wins wherever it is set, private host included. Pin
+ * the server's certificate and this branch is never reached — the upgrade path
+ * needs no code change, only the value.
  *
  * ===========================================================================
  * `DATABASE_CA_CERT`, AND THE THING SOMEBODY WOULD OTHERWISE DO AT 2AM
@@ -76,5 +138,13 @@ export function tlsOptions(url: string): ConnectionOptions | undefined {
      works. */
   const ca = process.env.DATABASE_CA_CERT?.trim().replace(/\\n/g, "\n");
 
-  return ca ? { rejectUnauthorized: true, ca } : { rejectUnauthorized: true };
+  /* Checked first, so pinning a certificate upgrades a private connection back
+     to a verified one without touching this file. */
+  if (ca) return { rejectUnauthorized: true, ca };
+
+  /* Encrypted, unauthenticated, and only where the name cannot be resolved from
+     outside the provider. See the argument above. */
+  if (isPrivateHost(url)) return { rejectUnauthorized: false };
+
+  return { rejectUnauthorized: true };
 }
