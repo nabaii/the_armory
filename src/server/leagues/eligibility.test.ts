@@ -18,6 +18,7 @@ import {
   hasPriorityBooking,
   isFounding,
   isFullMember,
+  leaguesStandingFor,
 } from "./eligibility";
 
 describe("privileges", () => {
@@ -184,5 +185,67 @@ describe("the cap end to end", () => {
     });
     assert.equal(afterJoining.ok, true);
     if (afterJoining.ok) assert.equal(afterJoining.payPerVisit, false);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+   WHERE STANDING COMES FROM
+
+   The bug this mapping fixes was silent: `linkPortalAccount` leaves
+   `members.status` at its default, so every member the club onboards read as
+   `non_member` and lost captaincy, the club ladder, priority booking and
+   status events without anything being refused out loud. These assertions are
+   about privileges rather than enum values, because the enum value is not what
+   went wrong — what went wrong is what it bought.
+   -------------------------------------------------------------------------- */
+
+describe("leaguesStandingFor", () => {
+  it("makes an active membership a full member", () => {
+    const standing = leaguesStandingFor("active", false);
+    assert.equal(standing, "member");
+    assert.equal(isFullMember(standing), true);
+    assert.equal(canCaptainLeague(standing), true);
+    assert.equal(canAppearOnClubLadder(standing), true);
+  });
+
+  it("keeps a founding membership distinguished", () => {
+    const standing = leaguesStandingFor("active", true);
+    assert.equal(standing, "founding_member");
+    assert.equal(isFounding(standing), true);
+    assert.equal(isFullMember(standing), true);
+  });
+
+  it("founding is read from the membership, so an active member is never merely founding", () => {
+    /* §3.1 puts is_founding on the membership rather than the tier precisely so
+       a later tier change cannot revoke it. Both active shapes are full. */
+    assert.equal(isFullMember(leaguesStandingFor("active", true)), true);
+    assert.equal(isFullMember(leaguesStandingFor("active", false)), true);
+  });
+
+  it("grants nothing to a pending membership, agreeing with §4's standing()", () => {
+    const standing = leaguesStandingFor("pending", false);
+    assert.equal(isFullMember(standing), false);
+    assert.equal(canCaptainLeague(standing), false);
+  });
+
+  it("does not treat a pending membership as one that lapsed", () => {
+    /* A member who has never been active did not let anything go, and the
+       lapsed copy would tell them they had. */
+    assert.notEqual(leaguesStandingFor("pending", false), "lapsed");
+  });
+
+  it("withdraws privileges from lapsed, suspended and resigned alike", () => {
+    for (const club of ["lapsed", "suspended", "resigned"] as const) {
+      const standing = leaguesStandingFor(club, false);
+      assert.equal(isFullMember(standing), false, `${club} should not be a full member`);
+      assert.equal(canCaptainLeague(standing), false, `${club} should not captain`);
+      assert.equal(canAppearOnClubLadder(standing), false, `${club} should not be on the ladder`);
+    }
+  });
+
+  it("keeps a founding tier from rescuing a membership that is not live", () => {
+    /* The flag survives on the row; the privileges do not survive the status. */
+    assert.equal(isFullMember(leaguesStandingFor("lapsed", true)), false);
+    assert.equal(isFullMember(leaguesStandingFor("suspended", true)), false);
   });
 });

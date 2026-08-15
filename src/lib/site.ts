@@ -114,6 +114,15 @@ export const routes = {
   portalPassword: "/portal/password",
   /** Sign in as an existing member, by phone and password. Interim — see §9. */
   signInMember: "/sign-in/member",
+  /**
+   * Confirming an email address. Deliberately OUTSIDE the member area: the
+   * token is the proof, redeeming it grants no session, and a member adding a
+   * first address will often open the link on a device the club has never seen.
+   * Requiring a session here would send them to a sign-in they may not be able
+   * to complete — which is the very problem the address is being added to fix.
+   */
+  verifyEmail: "/verify-email",
+  emailConfirmed: "/verify-email/confirmed",
   leagueNew: "/portal/leagues/new",
   leagueJoin: "/portal/leagues/join",
   /** A specific league. Private — the repository scopes reads by membership. */

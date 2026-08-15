@@ -28,3 +28,14 @@ export type ChangePasswordState = {
 };
 
 export const emptyChangePasswordState: ChangePasswordState = { ok: false };
+
+export type EmailFormState = {
+  ok: boolean;
+  error?: string;
+  /** Set on success so the screen can name the address it sent to. */
+  sentTo?: string;
+};
+
+export const emptyEmailFormState: EmailFormState = { ok: false };
+
+export type ConfirmEmailState = { error?: string };

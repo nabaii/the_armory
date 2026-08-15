@@ -242,6 +242,25 @@ export async function erasePerson(
     .where(eq(schema.memberCredentials.personId, input.personId));
 
   /**
+   * Any pending email verification goes with them, for exactly the same reason
+   * and with exactly the same trap.
+   *
+   * `email_verifications` holds an EMAIL ADDRESS — the one being proved — and
+   * it cascades on `people`, which erasure never triggers because it redacts
+   * rather than deletes. A person erased with a link still in their inbox would
+   * keep a live row naming the address they were erased for, and the erasure
+   * would report success.
+   *
+   * The column check in src/domain/erasure.ts cannot catch this: it guards
+   * columns on `people`, and this is a table. The guard for tables is that
+   * anything holding personal data keyed on a person is deleted HERE, beside
+   * the credential that made the same argument first.
+   */
+  await tx
+    .delete(schema.emailVerifications)
+    .where(eq(schema.emailVerifications.personId, input.personId));
+
+  /**
    * Licence documents lose their URL too.
    *
    * §10 makes a licence scan the most restricted thing the club holds —

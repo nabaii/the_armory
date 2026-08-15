@@ -132,6 +132,17 @@ export const LIMITS = {
    * and far less than a list-walker needs.
    */
   memberSignIn: { limit: 10, windowMs: 10 * 60_000 },
+
+  /**
+   * Tighter than the rest, and the caller is already signed in.
+   *
+   * The threat here is not enumeration — a member is inside the club already —
+   * it is VOLUME. Every request makes the club send mail to an address the
+   * caller chose, and a bounce rate earned that way is paid for by every other
+   * message the club sends, including the ones that matter. Four is enough for
+   * a member who mistyped their address twice and then thought better of it.
+   */
+  emailVerification: { limit: 4, windowMs: 60 * 60_000 },
 } as const;
 
 /** Exposed for tests. */

@@ -9,6 +9,8 @@ import { uuidv7 } from "@/lib/uuidv7";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Section } from "@/components/layout/Section";
 import { SettleForm, TopUpForm } from "@/components/member/AccountForms";
+import { AddEmailForm } from "@/components/member/EmailForms";
+import { emailStateFor } from "@/server/armory/email-verification";
 import { Body, Caption, H2, H3 } from "@/components/ui/Text";
 
 /**
@@ -83,7 +85,10 @@ export default async function AccountPage() {
     );
   }
 
-  const account = await accountFor(getArmoryDb(), member.personId);
+  const [account, emailState] = await Promise.all([
+    accountFor(getArmoryDb(), member.personId),
+    emailStateFor(member.personId),
+  ]);
 
   return (
     <>
@@ -93,6 +98,25 @@ export default async function AccountPage() {
         title={account.standing.line}
         lead={account.standing.remedy ?? undefined}
       />
+
+      {/* --------------------------------------------------------- HOW YOU GET IN
+
+          Placed above the money deliberately. A member reads this page when
+          something is wrong, and the thing most likely to be wrong on a page
+          they cannot reach is that they could not get to it — §12 is explicit
+          that a member must never be surprised, and being locked out of your own
+          club with no way back is the largest surprise this system can produce.
+      */}
+
+      <Section ground="soffit" aria-labelledby="signing-in">
+        <H2 id="signing-in">How you sign in</H2>
+        <div className="mt-3">
+          <AddEmailForm
+            state={emailState.state}
+            current={emailState.state === "none" ? undefined : emailState.email}
+          />
+        </div>
+      </Section>
 
       {/* ------------------------------------------------- TIER AND PRIVILEGES */}
 

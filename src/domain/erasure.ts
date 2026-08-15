@@ -236,6 +236,7 @@ export type Redaction = {
   readonly lastName: string;
   readonly phone: string;
   readonly email: null;
+  readonly emailVerifiedAt: null;
   readonly dateOfBirth: null;
   readonly photoUrl: null;
   readonly address: null;
@@ -256,6 +257,11 @@ export const redactionFor = (personId: string): Redaction => ({
   lastName: REDACTED_SURNAME,
   phone: `erased:${personId}`,
   email: null,
+  /* Cleared WITH the address rather than kept as a timestamp. Left behind it
+     would assert that an erased person confirmed a mailbox the row no longer
+     holds — a fact about somebody nobody can identify, and a contradiction on
+     the same row. */
+  emailVerifiedAt: null,
   dateOfBirth: null,
   photoUrl: null,
   address: null,
@@ -282,6 +288,7 @@ export const IDENTIFYING_FIELDS = [
   "lastName",
   "phone",
   "email",
+  "emailVerifiedAt",
   "dateOfBirth",
   "photoUrl",
   "address",

@@ -1,4 +1,5 @@
 import type { memberStatus } from "@/db/schema";
+import type { MembershipStatus } from "@/domain/enums";
 
 /**
  * LEAGUE ELIGIBILITY — who may play, captain, and appear on the club ladder.
@@ -85,6 +86,66 @@ export const canEnterStatusEvents = (status: Status): boolean =>
 
 /** Founding members are "permanently and visibly distinguished". */
 export const isFounding = (status: Status): boolean => status === "founding_member";
+
+/* ---------------------------------------------------------------------------
+   WHERE STANDING COMES FROM
+   -------------------------------------------------------------------------- */
+
+/**
+ * The leagues standing implied by a club membership.
+ *
+ * ===========================================================================
+ * WHY THIS EXISTS: TWO ANSWERS TO ONE QUESTION
+ *
+ * `members.status` is the leagues product's notion of standing and
+ * `armory.memberships.status` is the club's. While nothing joined them that was
+ * a tolerable duplication. `members.person_id` joined them, and it stopped
+ * being tolerable: `linkPortalAccount` deliberately leaves `members.status` at
+ * its default, so every member the club onboards reads as `non_member` to this
+ * file — and the club's own founder was refused captaincy, the club ladder,
+ * priority booking and status events by a column nobody had written.
+ *
+ * The fix is not to sync the two, which is the divergence §3.4 warns about in a
+ * different table for the same reason. It is to have ONE answer: where a person
+ * link exists, the club's membership decides, and `members.status` is left to
+ * the leagues-only accounts it was designed for — someone who signed in to
+ * watch a ladder and has never been near the club.
+ *
+ * ===========================================================================
+ * THE MAPPING MIRRORS §4, IT DOES NOT INVENT A SECOND OPINION
+ *
+ * `standing()` in src/domain/capability/index.ts passes `active` and blocks
+ * every other status, `pending` included. This agrees with it: privileges begin
+ * when the membership is live, not when it is applied for. A `pending` member
+ * has been admitted and not yet paid (§5), which is precisely the state the
+ * club itself refuses to grant on.
+ *
+ * ===========================================================================
+ * ONE IMPRECISION, RECORDED RATHER THAN HIDDEN
+ *
+ * `suspended` and `resigned` both land on `lapsed`, because the leagues enum
+ * has four values and neither of those is one of them. Privileges resolve
+ * correctly — all three lose them and keep their history — but a suspended
+ * member reading a lapsed member's words is the kind of near-miss §4.3 objects
+ * to. Fixing it properly means a value in `member_status`, which is a migration
+ * this change does not need; noted here so the next person finds the reason
+ * rather than the symptom.
+ */
+export function leaguesStandingFor(
+  club: MembershipStatus,
+  isFoundingTier: boolean,
+): Status {
+  switch (club) {
+    case "active":
+      return isFoundingTier ? "founding_member" : "member";
+    case "pending":
+      return "non_member";
+    case "lapsed":
+    case "suspended":
+    case "resigned":
+      return "lapsed";
+  }
+}
 
 /* ---------------------------------------------------------------------------
    JOINING A LEAGUE

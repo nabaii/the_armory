@@ -227,6 +227,23 @@ export const people = armory.table(
     phone: text("phone").notNull(),
     email: text("email"),
 
+    /**
+     * When the member proved they control that mailbox — null until they do.
+     *
+     * The column exists because `email` is written by two very different
+     * hands. Staff type it off an application form and never verify it, and
+     * src/server/armory/member-password.ts states what that is worth: "One
+     * transposed character that happens to land on a real address hands a
+     * stranger a member's bookings, guest allowance, shooting history and
+     * account balance." A member proving control of the mailbox is worth
+     * something entirely different.
+     *
+     * Both live in the same column because both are the club's best record of
+     * how to reach this person. Only one of them may become a way IN, and this
+     * is how the two are told apart.
+     */
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+
     /** Required before a person may shoot; collected on the guest link (§6.3). */
     dateOfBirth: date("date_of_birth"),
 
@@ -654,6 +671,58 @@ export const memberCredentials = armory.table(
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("member_credentials_person_key").on(t.personId)],
+);
+
+/**
+ * PENDING EMAIL VERIFICATIONS — proving control of a mailbox.
+ *
+ * ===========================================================================
+ * WHY NOT `auth_tokens`
+ *
+ * The leagues product already has a hashed, single-use, expiring token table
+ * and this is deliberately not it. Redeeming an `auth_tokens` row SIGNS YOU IN
+ * as the account for that address — pointed at an address the member is only
+ * proposing, it would find or create the wrong member row and hand out a
+ * session for it. Same shape, opposite meaning.
+ *
+ * So the shape is copied and the meaning is not: redeeming one of these proves
+ * a mailbox and grants nothing.
+ *
+ * ===========================================================================
+ * THE ADDRESS IS HELD HERE, NOT ON THE PERSON
+ *
+ * A proposed address must not touch `people.email` until it is proved, because
+ * the moment it lands there the club will use it to reach the member — and an
+ * address typed one character wrong belongs to a stranger. Holding it here
+ * means an unproved address is inert: nothing reads it, nothing sends to it
+ * except the one message asking the member to prove it.
+ */
+export const emailVerifications = armory.table(
+  "email_verifications",
+  {
+    id: id(),
+
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => people.id, { onDelete: "cascade" }),
+
+    /** The address being proved. Lower-cased on the way in. */
+    email: text("email").notNull(),
+
+    /** SHA-256 of the raw token. The raw value is never persisted. */
+    tokenHash: text("token_hash").notNull(),
+
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+
+    /** Single use. Set on redemption; a second attempt must fail. */
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("email_verifications_token_hash_key").on(t.tokenHash),
+    index("email_verifications_person_idx").on(t.personId),
+  ],
 );
 
 export const staffRole = armory.enum("staff_role", STAFF_ROLES);
