@@ -9,6 +9,7 @@ import {
   refreshSession,
 } from "@/server/auth/repository";
 import { isDatabaseConfigured } from "@/db/client";
+import { clubStandingFor } from "@/server/leagues/standing";
 import { routes } from "@/lib/site";
 import { SESSION_HINT_COOKIE } from "@/lib/session-hint";
 
@@ -96,7 +97,41 @@ export async function getMember(): Promise<Member | null> {
     await refreshSession(session.id).catch(() => undefined);
   }
 
-  return session.member;
+  return withClubStanding(session.member);
+}
+
+/**
+ * Replace the leagues standing with the club's, where the two are joined.
+ *
+ * ===========================================================================
+ * WHY THE CORRECTION HAPPENS HERE AND NOT AT EACH READER
+ *
+ * Six places ask a member for its standing — the portal home, the member bar,
+ * both league pages, the league action and the repository that writes
+ * `status_at_join`. Correcting them one by one leaves the seventh, and the
+ * seventh is the one that records a historical fact nobody can revise later.
+ *
+ * So the correction goes where the member is loaded, and every reader is right
+ * by construction — including `createLeague`, which snapshots the status it is
+ * handed. That is the same argument the member layout makes for putting
+ * `requireMember()` in one place rather than on each page.
+ *
+ * `members.status` in the database is untouched. It is not stale so much as
+ * scoped: it remains the answer for accounts with no person link, which is what
+ * the leagues product was built for, and this never writes to it — a write
+ * would be the two-answers divergence the schema comment warns against.
+ */
+async function withClubStanding(member: Member): Promise<Member> {
+  if (!member.personId) return member;
+
+  /* Never let this fail a sign-in. An unreachable armory schema means the
+     leagues half falls back to its own column, which is the pre-link behaviour
+     and is wrong rather than broken — the portal still opens. */
+  const standing = await clubStandingFor(member.personId).catch(() => null);
+
+  if (!standing || standing === member.status) return member;
+
+  return { ...member, status: standing };
 }
 
 export function shouldRefresh(expiresAt: Date, now: Date = new Date()): boolean {
