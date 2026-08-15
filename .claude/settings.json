@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"c:/Users/enaic/OneDrive/Desktop/miyata/dgi_armoury\" && cat src/server/sync/device-auth.ts | head -80 && echo \"=== devices schema ===\" && sed -n '/^export const devices = armory.table/,/^\\);/p' src/db/armory/schema.ts | head -60)",
+      "Bash(npm run *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\enaic\\OneDrive\\Desktop\\miyata\\dgi_armoury\\src\\db\\armory",
+      "C:\\Users\\enaic\\OneDrive\\Desktop\\miyata\\dgi_armoury\\src\\server"
+    ]
+  }
+}
