@@ -54,6 +54,8 @@ const CHALK = "#F6F5F2";
 const SIGHT_GREY = "#727377";
 const RETICLE_BLACK = "#2A2A2B";
 const TEN_RING_RED = "#ED3036";
+const CHARRED_TIMBER = "#262523";
+const GABION_STONE = "#9A9188";
 
 const OUT_DIR = path.join(process.cwd(), "public", "icons");
 
@@ -62,12 +64,49 @@ const OUT_DIR = path.join(process.cwd(), "public", "icons");
  * Geometry is copied from src/components/brand/Reticle.tsx — ring r=41 at
  * stroke 7, cardinal ticks at stroke 9, centre dot r=9.
  */
-function markSvg(scale: number): string {
+/**
+ * The two registers.
+ *
+ * ===========================================================================
+ * WHY THE DESK GETS ITS OWN ICON AND NOT JUST ITS OWN MANIFEST
+ *
+ * The console and the members app are two products that live on the same
+ * origin, and once both are installed they sit next to each other on the same
+ * home screen. Two identical icons is not a cosmetic problem: an officer
+ * reaching for the desk at the start of a shift, or a founder who has both,
+ * opens the wrong one — and the wrong one is a members app that cannot check
+ * anybody in.
+ *
+ * The distinction is the club's own night register rather than a new colour.
+ * Charred Timber is what the console layout already sets as its `themeColor`,
+ * and Guidelines §4 makes it the dark ground; the desk is a shared instrument
+ * on a counter, which is exactly the register it belongs to.
+ *
+ * The mark itself is unchanged — same geometry, same red centre dot. §3 forbids
+ * recolouring the mark, and nothing here does: only the GROUND changes, and the
+ * ring moves from Sight Grey to Gabion Stone because Sight Grey on Charred
+ * Timber is 1.9:1 and would disappear. Gabion Stone measures 4.6:1 there.
+ */
+type Register = { ground: string; ring: string; ticks: string };
+
+const MEMBERS: Register = {
+  ground: CHALK,
+  ring: SIGHT_GREY,
+  ticks: RETICLE_BLACK,
+};
+
+const DESK: Register = {
+  ground: CHARRED_TIMBER,
+  ring: GABION_STONE,
+  ticks: CHALK,
+};
+
+function markSvg(scale: number, register: Register = MEMBERS): string {
   return `
-  <rect width="100" height="100" fill="${CHALK}"/>
+  <rect width="100" height="100" fill="${register.ground}"/>
   <g transform="translate(50 50) scale(${scale}) translate(-50 -50)">
-    <circle cx="50" cy="50" r="41" fill="none" stroke="${SIGHT_GREY}" stroke-width="7"/>
-    <g stroke="${RETICLE_BLACK}" stroke-width="9" stroke-linecap="butt">
+    <circle cx="50" cy="50" r="41" fill="none" stroke="${register.ring}" stroke-width="7"/>
+    <g stroke="${register.ticks}" stroke-width="9" stroke-linecap="butt">
       <line x1="50" y1="2"  x2="50" y2="24"/>
       <line x1="50" y1="76" x2="50" y2="98"/>
       <line x1="2"  y1="50" x2="24" y2="50"/>
@@ -78,30 +117,49 @@ function markSvg(scale: number): string {
 }
 
 const TARGETS = [
-  { file: "icon-192.png", size: 192, scale: 0.76 },
-  { file: "icon-512.png", size: 512, scale: 0.76 },
-  { file: "icon-maskable-512.png", size: 512, scale: 0.56 },
+  { file: "icon-192.png", size: 192, scale: 0.76, register: MEMBERS },
+  { file: "icon-512.png", size: 512, scale: 0.76, register: MEMBERS },
+  { file: "icon-maskable-512.png", size: 512, scale: 0.56, register: MEMBERS },
   /* iOS rounds the corners of this one itself and never masks further, but it
      rounds generously — 0.7 keeps the ticks clear of the curve. */
-  { file: "apple-touch-icon.png", size: 180, scale: 0.7 },
+  { file: "apple-touch-icon.png", size: 180, scale: 0.7, register: MEMBERS },
   /* The classic favicon slot, for browser tabs and bookmark bars. */
-  { file: "icon-32.png", size: 32, scale: 0.86 },
+  { file: "icon-32.png", size: 32, scale: 0.86, register: MEMBERS },
+
+  /* The desk. Same sizes, same scales, the night register — see `Register`. */
+  { file: "desk-192.png", size: 192, scale: 0.76, register: DESK },
+  { file: "desk-512.png", size: 512, scale: 0.76, register: DESK },
+  { file: "desk-maskable-512.png", size: 512, scale: 0.56, register: DESK },
+  { file: "desk-apple-touch-icon.png", size: 180, scale: 0.7, register: DESK },
 ];
 
 async function main() {
   await mkdir(OUT_DIR, { recursive: true });
 
-  const browser = await chromium.launch();
+  /**
+   * An escape hatch for environments that already have a browser.
+   *
+   * Playwright resolves its own download by version, and a CI image or a
+   * sandbox that ships Chromium at a different build fails the launch with a
+   * "run npx playwright install" that it cannot act on. Pointing
+   * CHROMIUM_PATH at an existing binary is the one-line way out; unset, this
+   * behaves exactly as it always has.
+   */
+  const browser = await chromium.launch(
+    process.env.CHROMIUM_PATH
+      ? { executablePath: process.env.CHROMIUM_PATH }
+      : {},
+  );
   const page = await browser.newPage();
 
-  for (const { file, size, scale } of TARGETS) {
+  for (const { file, size, scale, register } of TARGETS) {
     await page.setViewportSize({ width: size, height: size });
     await page.setContent(
       `<!doctype html><meta charset="utf-8">
-       <style>html,body{margin:0;padding:0;background:${CHALK}}</style>
+       <style>html,body{margin:0;padding:0;background:${register.ground}}</style>
        <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"
             viewBox="0 0 100 100" shape-rendering="geometricPrecision">
-         ${markSvg(scale)}
+         ${markSvg(scale, register)}
        </svg>`,
     );
     const buffer = await page.screenshot({ type: "png" });

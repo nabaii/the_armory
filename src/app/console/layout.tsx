@@ -42,6 +42,36 @@ export const metadata: Metadata = {
      devices; a search engine is not one, and a crawler finding it would be a
      crawler queueing 401s against the club's sync endpoints. */
   robots: { index: false, follow: false },
+
+  /**
+   * THE DESK'S OWN MANIFEST, AND WHY THIS LINE IS LOAD-BEARING.
+   *
+   * Without it the root layout's `<link rel="manifest">` is what this page
+   * advertises, and that manifest describes the MEMBERS app: `start_url: "/"`,
+   * the club's full name, the Chalk icon. Add to Home Screen from here then
+   * installs the members app, and the officer who did it lands in the members
+   * portal every time they tap the icon — which is exactly how this was
+   * reported. See the header on the route this points at.
+   */
+  manifest: "/console/manifest.webmanifest",
+
+  /**
+   * iOS reads none of the manifest for the home-screen label or the icon; it
+   * reads these. The root layout sets them for the members app, and metadata
+   * merges down the tree, so without an override here the desk inherits the
+   * label "The Armory" and the Chalk touch icon — two identical icons on one
+   * home screen, one of which cannot check anybody in.
+   */
+  appleWebApp: {
+    capable: true,
+    title: "Desk",
+    /* The desk's status bar sits on Charred Timber. */
+    statusBarStyle: "black-translucent",
+  },
+  icons: {
+    apple: [{ url: "/icons/desk-apple-touch-icon.png", sizes: "180x180" }],
+    icon: [{ url: "/icons/desk-192.png", sizes: "192x192", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {
