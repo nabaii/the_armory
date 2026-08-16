@@ -35,7 +35,6 @@ import { revalidatePath } from "next/cache";
 import { getArmoryDb, schema } from "@/db/armory/client";
 import { evaluate } from "@/domain/capability";
 import { capacityFor } from "@/domain/availability";
-import { format, fromStorage } from "@/lib/money";
 import { uuidv7 } from "@/lib/uuidv7";
 import { log } from "@/server/log";
 import { applyBookingEvent, draftBooking } from "@/server/armory/bookings";
@@ -44,6 +43,8 @@ import { resolveArmoryMember } from "@/server/armory/member-session";
 import { record } from "@/server/armory/record";
 import { PostgresRecordStore } from "@/server/armory/postgres-store";
 import { and, eq, gte } from "drizzle-orm";
+
+import { overagePriceLabel } from "@/server/armory/overage";
 
 import type { HostingState } from "@/lib/hosting-state";
 
@@ -320,22 +321,6 @@ export async function cancelInvitation(
 /* ============================================================================
    HELPERS
    ========================================================================= */
-
-/**
- * §14: "Guest overage price — Blocks charging logic. Configurable, so not
- * structurally blocking. Needed by: Before M8."
- *
- * Not settled, so this returns null and the capability service says "the guest
- * rate" rather than inventing a number. §12 requires the price be SHOWN, and a
- * made-up figure shown to a member is worse than a vaguer sentence — they would
- * hold the club to it.
- */
-function overagePriceLabel(): string | null {
-  const kobo = process.env.GUEST_OVERAGE_KOBO;
-  if (!kobo) return null;
-  const parsed = fromStorage(kobo);
-  return format(parsed);
-}
 
 function visitUrl(token: string): string {
   const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "";
