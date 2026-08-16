@@ -25,6 +25,7 @@
     "db:credentials": "node --env-file-if-exists=.env.local --import tsx scripts/apply-credentials.ts",
     "db:seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
     "db:hours": "node --env-file-if-exists=.env.local --import tsx scripts/hours.ts",
+    "release": "npm run db:migrate && npm run db:hours -- --apply --if-empty",
     "db:prove": "node --env-file-if-exists=.env.local --import tsx scripts/prove.ts",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run gate && npm run volume",
     "verify:full": "npm run verify && npm run build && npm run audit"

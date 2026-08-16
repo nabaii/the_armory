@@ -218,9 +218,45 @@ not reach the database, and two concurrent builds would race the same migration.
 Use one of:
 
 - Render's **Pre-Deploy Command** (paid instance types), set to
-  `npm run db:migrate`; or
+  `npm run db:migrate`;
 - a **manual run** from your machine against the production URL, immediately
-  before pushing.
+  before pushing; or
+- the **start command**, if there is no machine to run one from — see §4b.
+
+### 4b. When there is no terminal — migrating from the start command
+
+A founder deploying from a phone has no shell, no Pre-Deploy Command on the
+free plan, and no way to run §4 or §4a. For that case, set the service's **Start
+Command** to:
+
+```
+npm run release && npm run start
+```
+
+`release` is `db:migrate` followed by `db:hours --apply --if-empty`. Both are
+idempotent, so this is safe on every boot — which matters on the free plan,
+where the instance cold-starts several times a day.
+
+Three properties make it safe rather than merely convenient:
+
+- **Migrations are recorded.** `drizzle-kit migrate` skips what is already
+  applied; a boot with nothing pending costs milliseconds.
+- **The week is seeded, not synced.** `--if-empty` writes only into an empty
+  `opening_hours`. Once the club edits its own hours — a late deck in December,
+  a closed morning for a competition — later boots leave them alone. Without
+  that flag, a cold start would silently undo the founder's edits.
+- **A failed migration stops the boot.** That is the correct direction: code
+  serving against a database missing its columns is worse than a service that
+  does not come up, and the deploy log says which migration failed.
+
+**It depends on devDependencies at runtime.** `drizzle-kit` and `tsx` are dev
+dependencies, and the build command installs them (`npm ci --include=dev`). If
+that ever becomes a plain `npm ci`, this start command breaks — move migrations
+back to §4 rather than promoting the tools.
+
+The trade this accepts: a migration now runs inside the service's own boot
+rather than ahead of traffic. With `numInstances: 1` there is no race, and the
+alternative for a phone-only operator is not migrating at all.
 
 Migrations through `0009` should apply. `db:migrate` reporting *nothing pending*
 afterwards is the check.
@@ -360,6 +396,9 @@ git push                                             # 1
 DATABASE_URL='<external>' npm run db:migrate         # 4  before traffic
 DATABASE_URL='<external>' npm run db:hours -- --apply # 4a publish the week
 DATABASE_URL='<external>' npm run db:prove           # 5  expect 29 passes
+
+# No terminal? Set the Start Command instead (§4b) and skip 4 and 4a:
+#   npm run release && npm run start
 
 # 0a. DATABASE_URL on the web service = the INTERNAL url
 # 3.  Set the rest of the env vars in the dashboard

@@ -1,8 +1,24 @@
 /**
  * PUBLISH THE CLUB'S WEEK.
  *
- *   npm run db:hours          # show what the database holds, change nothing
- *   npm run db:hours --apply  # write the declared week from src/content/club-week.ts
+ *   npm run db:hours                     # show what is there, change nothing
+ *   npm run db:hours -- --apply          # write the declared week
+ *   npm run db:hours -- --apply --if-empty   # write it ONLY if none is published
+ *
+ * ============================================================================
+ * --if-empty, AND WHY THE RELEASE PATH USES IT
+ *
+ * `npm run release` runs this on every boot, because the club's founder deploys
+ * from a phone and has no terminal to run a one-off from. That makes clobbering
+ * the real question: the club WILL edit its hours — a late deck in December, a
+ * closed morning for a competition — and a seed that reasserted itself on every
+ * cold start would silently undo them, on a free instance that cold-starts
+ * several times a day.
+ *
+ * So `--if-empty` publishes only into an empty table. It is a seed rather than
+ * a sync: it gets a new database to the club's declared week once, and never
+ * touches a week somebody has since changed. Without the flag the behaviour is
+ * unchanged — a deliberate, operator-run replacement.
  *
  * ============================================================================
  * WHY THIS IS A SCRIPT AND NOT A MIGRATION
@@ -66,6 +82,7 @@ const clock = (minute: number) =>
 
 async function main() {
   const apply = process.argv.includes("--apply");
+  const ifEmpty = process.argv.includes("--if-empty");
 
   if (!isArmoryDatabaseConfigured()) {
     console.error(
@@ -178,6 +195,21 @@ async function main() {
 
   if (!apply) {
     console.log(dim("  Nothing was written. Re-run with --apply to publish the declared week.\n"));
+    return;
+  }
+
+  /**
+   * The seed path, and the reason it stops here rather than at the write.
+   *
+   * A club that has published ANY week has an operating decision in the
+   * database, and it outranks the one declared in this repository — see the
+   * header. Reporting it as a skip rather than silently returning matters on a
+   * deploy log, which is the only place the founder will see this run.
+   */
+  if (ifEmpty && existing.length > 0) {
+    console.log(
+      dim(`  --if-empty: ${existing.length} periods already published. Left alone.\n`),
+    );
     return;
   }
 
