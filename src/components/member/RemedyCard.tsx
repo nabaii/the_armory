@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { Body, H3 } from "@/components/ui/Text";
+import { QuietAction } from "@/components/member/QuietAction";
 import { StatusPill, type Status } from "@/components/member/StatusPill";
 
 /**
@@ -82,15 +82,9 @@ export function RemedyCard({ item, className }: { item: Remedy; className?: stri
       )}
 
       {item.action && (
-        <Link
-          href={item.action.href}
-          className={cn(
-            "mt-2 inline-block text-body font-display font-bold",
-            "text-[var(--ink)] underline decoration-1 underline-offset-4",
-          )}
-        >
+        <QuietAction href={item.action.href} className="mt-1">
           {item.action.label}
-        </Link>
+        </QuietAction>
       )}
     </article>
   );

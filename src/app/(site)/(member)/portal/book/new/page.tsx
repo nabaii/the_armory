@@ -22,6 +22,7 @@ import { Section } from "@/components/layout/Section";
 import { Body, Caption, H2, H3 } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { BookingFlow } from "@/components/member/BookingFlow";
+import { QuietAction } from "@/components/member/QuietAction";
 import {
   addDays,
   formatTime,
@@ -476,11 +477,8 @@ function freeAt(slots: readonly Slot[], slotId: string): number | null {
 
 function BackLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link
-      href={href}
-      className="mt-6 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
-    >
+    <QuietAction href={href} className="mt-5">
       {label}
-    </Link>
+    </QuietAction>
   );
 }

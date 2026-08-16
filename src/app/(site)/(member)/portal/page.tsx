@@ -15,6 +15,7 @@ import { clubOpeningHours } from "@/server/armory/club-policy";
 import { programmeWeek, publishedEvents } from "@/server/armory/programme";
 import type { ProgrammeDay } from "@/domain/programme";
 import { Section } from "@/components/layout/Section";
+import { QuietAction } from "@/components/member/QuietAction";
 import { Body, Caption, H2, H3, Kicker } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { RemedyStack } from "@/components/member/RemedyCard";
@@ -183,12 +184,9 @@ export default async function TodayPage() {
               {armory.allowance.remaining === 1 ? "guest visit" : "guest visits"}{" "}
               included. Add them now and they get their own link.
             </Body>
-            <Link
-              href={routes.portalBook}
-              className="mt-2 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
-            >
-              Add a guest
-            </Link>
+            <QuietAction href={routes.portalBook}>
+            Add a guest
+          </QuietAction>
           </div>
         )}
       </Section>
@@ -249,12 +247,9 @@ export default async function TodayPage() {
               superseded: lastRound.superseded,
             }}
           />
-          <Link
-            href={routes.portalShooting}
-            className="mt-3 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
-          >
+          <QuietAction href={routes.portalShooting}>
             Your whole record
-          </Link>
+          </QuietAction>
         </Section>
       )}
     </>
@@ -362,12 +357,9 @@ function TonightOrTheWeek({
             </li>
           ))}
         </ul>
-        <Link
-          href={routes.portalBook}
-          className="mt-4 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
-        >
-          The whole week
-        </Link>
+        <QuietAction href={routes.portalBook}>
+            The whole week
+          </QuietAction>
       </>
     );
   }
@@ -413,12 +405,9 @@ function TonightOrTheWeek({
           </li>
         ))}
       </ul>
-      <Link
-        href={routes.portalBook}
-        className="mt-4 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
-      >
-        The whole week
-      </Link>
+      <QuietAction href={routes.portalBook}>
+            The whole week
+          </QuietAction>
     </>
   );
 }

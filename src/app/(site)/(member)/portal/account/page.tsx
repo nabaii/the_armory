@@ -18,6 +18,7 @@ import { formatDate, formatWeekdayDate, parseDateColumn } from "@/lib/time";
 import { uuidv7 } from "@/lib/uuidv7";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Section } from "@/components/layout/Section";
+import { QuietAction } from "@/components/member/QuietAction";
 import { SettleForm, TopUpForm } from "@/components/member/AccountForms";
 import { InviteGuestForm } from "@/components/member/HostingForms";
 import { AllowanceMeter } from "@/components/member/AllowanceMeter";
@@ -320,12 +321,9 @@ export default async function MePage() {
           <Body muted className="mt-1 max-w-[68ch]">
             You sign in with your phone number and a password.
           </Body>
-          <Link
-            href={routes.portalPassword}
-            className="mt-2 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
-          >
+          <QuietAction href={routes.portalPassword}>
             Change your password
-          </Link>
+          </QuietAction>
         </div>
       </Section>
     </>
