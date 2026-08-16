@@ -49,7 +49,26 @@ export type ArrivalRow = {
   photoUrl: string | null;
   /** §6.4: "tier or host" — a member shows their tier, a guest shows who brought them. */
   subtitle: string;
-  discipline: string;
+  /**
+   * What this person is here for — a discipline where they are shooting, and
+   * "Table" or "Spectating" where they are not (Members Portal §7.4).
+   *
+   * Named `purpose` rather than `discipline` since drizzle/0008, because it is
+   * no longer always a discipline. The rename is the point: a field called
+   * `discipline` holding the string "Table" is the kind of quiet lie that ends
+   * up in a query filter.
+   */
+  purpose: string;
+  /**
+   * The firing line, where there is one. Null for a table booking or a
+   * spectator (Members Portal §7.4).
+   *
+   * Kept alongside `purpose` because check-in reads it to offer a lane, and
+   * that read must not be satisfied by a display string. Null is the signal
+   * that there is no lane to assign — which is a state the desk now has, and
+   * `lanesFor` answers with an empty list rather than a lookup on "Table".
+   */
+  discipline: string | null;
   /** Africa/Lagos, per §2. */
   time: string;
   status: ArrivalStatus;
@@ -161,6 +180,7 @@ function rowFor(
       name: "Unknown person",
       photoUrl: null,
       subtitle: "Not in today's information",
+      purpose: purposeOf(arrival),
       discipline: arrival.discipline,
       time: formatTime(new Date(arrival.slotStart)),
       status: "blocked",
@@ -209,6 +229,7 @@ function rowFor(
     name: person ? `${person.firstName} ${person.lastName}` : "Unknown person",
     photoUrl: person?.photoUrl ?? null,
     subtitle,
+    purpose: purposeOf(arrival),
     discipline: arrival.discipline,
     time: formatTime(new Date(arrival.slotStart)),
     status: statusFor(decision),
@@ -259,4 +280,32 @@ export function todaySummary(rows: readonly ArrivalRow[]): string {
 
   if (problems === 0) return `${expected}, ${waiting} still to arrive.`;
   return `${expected}, ${waiting} still to arrive, ${problems} needing attention.`;
+}
+
+/**
+ * What one arrival is here for, in the desk's words — Members Portal §7.4.
+ *
+ * A shooter's discipline where there is one. Otherwise the booking type, spelt
+ * out: an officer reading a row at a counter with somebody in front of them
+ * should not have to work out what an empty column means, and "—" would make
+ * them ask. P6 — every question the desk does not have to ask is part of the
+ * fifteen-second check-in this portal exists to protect.
+ *
+ * The `shoot` case with no discipline should be impossible: the CHECK in
+ * drizzle/0008 refuses that pairing at the database. It is handled anyway,
+ * because the alternative on a device holding a pack pulled before that
+ * migration is a blank cell nobody can explain.
+ */
+function purposeOf(arrival: PackArrival): string {
+  if (arrival.discipline) return arrival.discipline;
+
+  switch (arrival.bookingType) {
+    case "table":
+      return "Table";
+    case "spectate":
+      return "Spectating";
+    case "shoot":
+    case "both":
+      return "Shooting";
+  }
 }

@@ -308,13 +308,30 @@ async function probe(page: Page, route: string, width: number) {
   return (await page.evaluate(PROBE)) as Omit<Finding, "route" | "width">[];
 }
 
+/**
+ * An explicitly provided browser binary, where the environment has one.
+ *
+ * `chromium.launch()` resolves a build revision pinned to the installed
+ * Playwright, and a CI image that ships a different one fails with a message
+ * telling the operator to download a browser they already have. That is a real
+ * hour lost, and the fix is one environment variable.
+ *
+ * Unset in normal use, which keeps the ordinary path exactly as it was.
+ */
+const launchOptions = process.env.PLAYWRIGHT_CHROMIUM_PATH
+  ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH }
+  : {};
+
 async function run() {
   let browser: Browser;
   try {
-    browser = await chromium.launch();
+    browser = await chromium.launch(launchOptions);
   } catch {
     console.error(
-      red("\nCould not launch Chromium. Run `npx playwright install chromium`.\n"),
+      red(
+        "\nCould not launch Chromium. Run `npx playwright install chromium`," +
+          "\nor set PLAYWRIGHT_CHROMIUM_PATH to a browser this machine has.\n",
+      ),
     );
     process.exit(1);
   }

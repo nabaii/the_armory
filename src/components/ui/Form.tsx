@@ -168,7 +168,18 @@ function AlertIcon() {
    on focus and the visitor loses their place in the form.
    -------------------------------------------------------------------------- */
 
-const CONTROL = [
+/**
+ * The control surface, exported.
+ *
+ * `TextInput` derives an input's `name` from its `id`, which is right for a
+ * form of distinct fields and wrong for a REPEATED one: the booking flow posts
+ * several `companionName` entries and reads them with `FormData#getAll`, so
+ * every row needs the same name and a different id. Rather than widen
+ * `TextInput` with a `name` prop that only one caller would ever pass — and
+ * that would let any other caller quietly break the id/name pairing — the
+ * styling is shared and the repeated rows write their own inputs.
+ */
+export const CONTROL = [
   "min-h-6 w-full rounded-control px-2 py-1",
   "bg-white text-body text-reticle-black",
   "border border-sight-grey",

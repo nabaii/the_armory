@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { requireMember } from "@/server/auth/session";
-import { MemberBar } from "@/components/member/MemberBar";
+import { MembersShell } from "@/components/member/MembersShell";
+import { isFounding } from "@/server/leagues/eligibility";
+import { resolveArmoryMember } from "@/server/armory/member-session";
 
 /**
  * MEMBER SHELL.
@@ -44,9 +46,32 @@ export default async function MemberLayout({
 }) {
   const member = await requireMember();
 
+  /**
+   * The two halves of one person — Members Portal §4.3.
+   *
+   * The display name belongs to the leagues product (`public.members`); the
+   * member number and tier belong to the management system (`armory`). The
+   * header carries all three, so the layout is the one place that reads both.
+   *
+   * Resolving it here rather than in each page is what makes the anchor
+   * PERMANENT: §4.3 asks for the member number "on every screen, in every
+   * session", and a header assembled per page would eventually meet a page that
+   * forgot. It costs one read per request, cached by `resolveArmoryMember`'s
+   * own callers within the render.
+   */
+  const resolution = await resolveArmoryMember();
+  const armory = resolution.state === "member" ? resolution.member : null;
+
   return (
     <>
-      <MemberBar member={member} />
+      <MembersShell
+        identity={{
+          displayName: member.displayName,
+          memberNumber: armory?.memberNumber ?? null,
+          tierName: armory?.tier.name ?? null,
+          founding: isFounding(member.status),
+        }}
+      />
       {children}
     </>
   );

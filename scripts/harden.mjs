@@ -35,6 +35,10 @@ const ROUTES = [
   "/groups", "/sport", "/leagues", "/enquire",
   "/legal/privacy", "/legal/terms", "/legal/refunds",
   "/membership/received", "/groups/received", "/leagues/joined",
+  /* The component inventory. Not a page a member loads, and the only route
+     where the members-app components (§11) can be scanned at all — every
+     surface that uses them for real is behind a session. */
+  "/brand/components",
 ];
 
 const PERF_ROUTES = ["/", "/first-visit", "/membership", "/ranges", "/the-club"];
@@ -135,14 +139,34 @@ async function accessibility(browser) {
     }
   }
 
-  /* States a static scan never reaches. */
+  /**
+   * States a static scan never reaches.
+   *
+   * The mobile navigation drawer is one of them, and it no longer exists: the
+   * navigation moved to the always-visible bottom bar (see BottomNav.tsx —
+   * "a hamburger in the opposite corner is the one detail that marks a site as
+   * a site"). The bar is in the DOM on every route, so the static scans above
+   * already cover what this step used to cover.
+   *
+   * The step is kept and made conditional rather than deleted, because it is
+   * the hook every future modal, sheet and drawer belongs on — and because an
+   * audit that crashes on a selector nobody has looked at in three milestones
+   * is an audit that stops being run. It crashed on exactly that.
+   */
   const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page = await context.newPage();
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
-  await page.click('button[aria-controls="mobile-nav"]');
-  await page.waitForSelector("#mobile-nav");
-  await settle(page, "#mobile-nav");
-  await scan(page, "mobile menu open");
+
+  const drawerTrigger = page.locator('button[aria-controls="mobile-nav"]');
+  if ((await drawerTrigger.count()) > 0) {
+    await drawerTrigger.click();
+    await page.waitForSelector("#mobile-nav");
+    await settle(page, "#mobile-nav");
+    await scan(page, "mobile menu open");
+  } else {
+    console.log(dim("  --    mobile menu — no drawer in this build (bottom bar)"));
+  }
+
   await context.close();
 }
 
@@ -385,7 +409,19 @@ async function interaction(browser) {
     });
     const page = await context.newPage();
     await page.goto(BASE + "/", { waitUntil: "networkidle" });
-    await page.click('button[aria-controls="mobile-nav"]');
+
+    /* Same conditional as the accessibility pass, for the same reason: the
+       drawer was replaced by the always-visible bottom bar, and there is
+       nothing to trap focus in. Kept as the hook for the next thing that
+       genuinely does open over the page. */
+    const trigger = page.locator('button[aria-controls="mobile-nav"]');
+    if ((await trigger.count()) === 0) {
+      console.log(dim("  --    mobile menu — no drawer in this build (bottom bar)"));
+      await context.close();
+      return;
+    }
+
+    await trigger.click();
     await page.waitForSelector("#mobile-nav");
 
     let escaped = false;
@@ -431,7 +467,19 @@ if (!(await reachable())) {
   process.exit(1);
 }
 
-const browser = await chromium.launch({ channel: "chrome" });
+/**
+ * Chrome by channel, unless the environment names a binary.
+ *
+ * `channel: "chrome"` is deliberate — the performance budget is measured
+ * against the browser the audience actually uses, not against a bundled build.
+ * PLAYWRIGHT_CHROMIUM_PATH is the escape hatch for an image that ships one but
+ * not the other, and it is unset in normal use.
+ */
+const browser = await chromium.launch(
+  process.env.PLAYWRIGHT_CHROMIUM_PATH
+    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH }
+    : { channel: "chrome" },
+);
 try {
   await accessibility(browser);
   await performance(browser);

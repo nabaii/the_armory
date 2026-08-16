@@ -884,7 +884,7 @@ one-word bypass — and it is invisible until someone finds it.
 once so the desk can show status offline, once so the database maintains the
 column itself. Changing the mapping means changing both, in the same commit.
 
-## Delivered — M0 through M10
+## Delivered — M0 through M11
 
 Against the §11 plan, every milestone's software is built. What remains is not
 code, and saying so plainly matters more than the table.
@@ -902,6 +902,7 @@ code, and saying so plainly matters more than the table.
 | **M8** | Money | `src/domain/charges.ts`, `src/server/armory/{money,billing}.ts`, `/api/armory/paystack/webhook` |
 | **M9** | Dashboard | `src/domain/dashboard.ts`, `src/server/armory/dashboard.ts`, `/api/dashboard` |
 | **M10** | Hardening | `src/domain/period-boundary.test.ts`, `scripts/volume.ts`, `docs/M10_*.md` |
+| **M11** | The Members App | `src/app/(site)/(member)/`, `src/components/member/`, `src/domain/programme.ts`, `drizzle/0008`, `docs/M11_members_portal.md` |
 
 ### What "delivered" does not mean
 
@@ -922,6 +923,25 @@ sacrifices, and they are tracked as documents rather than as tickets:
   four of them hosting decisions, three of them engineering work that has not
   been done (a founder-facing revocation control, the guest data redaction path,
   and a scheduled payment reconciliation sweep).
+
+### M11 — the Members App
+
+Built against the **Members Portal Design Specification** (Draft 1, 15 August
+2026), which specifies the authenticated member surface in the detail required
+to build it. `docs/M11_members_portal.md` is the milestone record, including
+**two corrections to that specification on the facts** — the member booking
+store was never the in-memory one, and the migration 0008 it describes as held
+did not exist.
+
+Four tabs and a red action: **TODAY · DIARY · COMPETE · ME · BOOK**. The
+navigation, the header's permanent member number, and the five shared
+components at `/brand/components` are the shell; `drizzle/0008` is the data
+work that unblocked the club's week.
+
+Nothing in it publishes a single opening hour. The tables arrive empty and
+every screen that depends on them renders one honest sentence, which is the
+specification's P2 working rather than an omission — see the SQL in the
+milestone record for what to run when the founder decides.
 
 `docs/M10_go_live.md` is the sequence that closes them, plus the staff training —
 which is run as a test of the software, because §12 asks that "a range officer

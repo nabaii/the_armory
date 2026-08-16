@@ -178,6 +178,19 @@ Set these in the Render dashboard. Nothing here belongs in the repository.
 | `POSTMARK_SERVER_TOKEN`, `MAIL_FROM` | No sign-in links, no booking confirmations. |
 | `MAIL_FALLBACK_TO` | Staff alerts have nowhere to go; the intake layer refuses submissions rather than dropping them. |
 
+### Set for you, and worth knowing about
+
+| Variable | Where it comes from |
+| --- | --- |
+| `NEXT_PUBLIC_BUILD_ID` | Derived at build time in `next.config.ts` from `RENDER_GIT_COMMIT`, falling back to the git commit and then to a timestamp. **Do not set it by hand.** |
+
+It is what the service worker versions its caches by, and what makes a member's
+browser fetch a new worker on their next open rather than keep serving last
+month's shell against this month's server (Members Portal §13.5). Setting it in
+the dashboard would put a human step back into the one mechanism whose failure
+is silent — a variable nobody remembers to update is a hardcoded constant
+wearing an environment variable's clothes, which is what this replaced.
+
 ### Optional
 
 `CRM_PROVIDER`, `CRM_TOKEN`, `TURNSTILE_SECRET_KEY`,
@@ -205,12 +218,71 @@ not reach the database, and two concurrent builds would race the same migration.
 Use one of:
 
 - Render's **Pre-Deploy Command** (paid instance types), set to
-  `npm run db:migrate`; or
+  `npm run db:migrate`;
 - a **manual run** from your machine against the production URL, immediately
-  before pushing.
+  before pushing; or
+- the **start command**, if there is no machine to run one from — see §4b.
 
-Migrations through `0007` should apply. `db:migrate` reporting *nothing pending*
+### 4b. When there is no terminal — migrating from the start command
+
+A founder deploying from a phone has no shell, no Pre-Deploy Command on the
+free plan, and no way to run §4 or §4a. For that case, set the service's **Start
+Command** to:
+
+```
+npm run release && npm run start
+```
+
+`release` is `db:migrate` followed by `db:hours --apply --if-empty`. Both are
+idempotent, so this is safe on every boot — which matters on the free plan,
+where the instance cold-starts several times a day.
+
+Three properties make it safe rather than merely convenient:
+
+- **Migrations are recorded.** `drizzle-kit migrate` skips what is already
+  applied; a boot with nothing pending costs milliseconds.
+- **The week is seeded, not synced.** `--if-empty` writes only into an empty
+  `opening_hours`. Once the club edits its own hours — a late deck in December,
+  a closed morning for a competition — later boots leave them alone. Without
+  that flag, a cold start would silently undo the founder's edits.
+- **A failed migration stops the boot.** That is the correct direction: code
+  serving against a database missing its columns is worse than a service that
+  does not come up, and the deploy log says which migration failed.
+
+**It depends on devDependencies at runtime.** `drizzle-kit` and `tsx` are dev
+dependencies, and the build command installs them (`npm ci --include=dev`). If
+that ever becomes a plain `npm ci`, this start command breaks — move migrations
+back to §4 rather than promoting the tools.
+
+The trade this accepts: a migration now runs inside the service's own boot
+rather than ahead of traffic. With `numInstances: 1` there is no race, and the
+alternative for a phone-only operator is not migrating at all.
+
+Migrations through `0009` should apply. `db:migrate` reporting *nothing pending*
 afterwards is the check.
+
+### 4a. Publish the club's week (M11)
+
+`0008` and `0009` add the club's operating day as columns. They arrive **empty**,
+and an empty week is not a broken deploy — it is the portal's honest shipping
+state: every availability grid renders one sentence and nothing bookable. The
+Diary, the red BOOK action and the whole booking flow stay dark until this runs.
+
+```bash
+DATABASE_URL='<production url>' npm run db:hours            # show, change nothing
+DATABASE_URL='<production url>' npm run db:hours -- --apply # publish
+```
+
+It writes the three things the founder has decided — the week (9am–6pm, seven
+days), the 60-minute session and the 15-minute turnaround — in one transaction,
+because a week published without a session length produces no slots at all and
+that half-configured state is worth making unreachable.
+
+It does **not** write `table_capacity`. Until the club counts its covers, table
+bookings stay closed and the Diary says so. The script reports it on every run.
+
+Run it again whenever the club's week changes. It replaces rather than
+accumulates, so narrowing the week actually narrows it.
 
 ---
 
@@ -322,7 +394,11 @@ git push                                             # 1
 
 # From your machine, with the EXTERNAL url (the internal one is Render-only):
 DATABASE_URL='<external>' npm run db:migrate         # 4  before traffic
+DATABASE_URL='<external>' npm run db:hours -- --apply # 4a publish the week
 DATABASE_URL='<external>' npm run db:prove           # 5  expect 29 passes
+
+# No terminal? Set the Start Command instead (§4b) and skip 4 and 4a:
+#   npm run release && npm run start
 
 # 0a. DATABASE_URL on the web service = the INTERNAL url
 # 3.  Set the rest of the env vars in the dashboard

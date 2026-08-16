@@ -109,7 +109,8 @@ export const contentGate: GateItem[] = [
   },
   {
     id: "booking-durable-store",
-    label: "Durable booking store — the in-memory store is development only",
+    label:
+      "Durable store for FIRST-VISIT deposits — the in-memory store is development only",
     owner: "Build team",
     resolved: false,
     severity: "blocker",
@@ -119,7 +120,14 @@ export const contentGate: GateItem[] = [
       "not shared and does not survive a restart — two instances would each " +
       "believe a full session had places left, and a paid booking could arrive " +
       "with no matching hold. Swap in the calendar-backed adapter before taking " +
-      "a single real deposit. Registered because this reads as finished code.",
+      "a single real deposit. Registered because this reads as finished code. " +
+      "SCOPE, CORRECTED: this is the PUBLIC first-visit deposit flow only. The " +
+      "Members Portal specification §2.2 lists it as blocking the member Diary " +
+      "and the red action, which is wrong on the facts — member bookings live " +
+      "in armory.bookings and armory.booking_participants, are durable, " +
+      "transactional and state-machined, and were never touched by this store. " +
+      "What blocked the member calendar was opening hours, and drizzle/0008 " +
+      "settled that.",
   },
   {
     id: "email-dns",
@@ -198,8 +206,106 @@ export const contentGate: GateItem[] = [
     id: "hours",
     label: "Opening hours",
     owner: "Operations",
+    /* SETTLED, 16 August 2026: 9am-6pm, every day. src/content/club-week.ts. */
     resolved: has(contact.hours),
     severity: "degraded",
+    note:
+      "Two places, one fact, and both now answered. The public site states the " +
+      "sentence; the portal reads armory.opening_hours, which is the same week " +
+      "as rows. Both come from src/content/club-week.ts. " +
+      "THE ROWS ARE NOT WRITTEN BY A DEPLOY — run `npm run db:hours --apply` " +
+      "from a machine with the connection string, once, and again whenever the " +
+      "week changes. Until that runs, the portal behaves exactly as it did " +
+      "before: one honest sentence and nothing bookable.",
+  },
+  {
+    id: "session-length",
+    label: "How long does one booking occupy a lane?",
+    owner: "Operations",
+    /* SETTLED, 16 August 2026: 60 minutes, with a 15-minute turnaround. */
+    resolved: true,
+    severity: "degraded",
+    note:
+      "ANSWERED: a standard session is 60 minutes, with a 15-minute " +
+      "operational buffer between one session and the next. Declared in " +
+      "src/content/club-week.ts and written by `npm run db:hours --apply`. " +
+      "The two are separate columns because they belong to different people: " +
+      "session_minutes is the MEMBER's — what their booking says and how long " +
+      "the lane is theirs — and turnaround_minutes is the CLUB's, for clearing " +
+      "the line and briefing the next relay. Folded into one number, a booking " +
+      "record would claim the member had the lane until 10:15 while the " +
+      "officer walked them off at 10:00. " +
+      "The club's day is therefore seven sessions a discipline: 09:00, 10:15, " +
+      "11:30, 12:45, 14:00, 15:15, 16:30.",
+  },
+  {
+    id: "club-programme",
+    label: "Does the club have a programme?",
+    owner: "Founder",
+    /* SETTLED, 16 August 2026: yes. The Diary keeps its tab. */
+    resolved: true,
+    severity: "degraded",
+    note:
+      "Members Portal §7.5, and §16 calls it the strongest single determinant " +
+      "of whether this portal reads as hospitality or as a booking tool. " +
+      "ANSWERED: the founder confirms the club has a programme, so the Diary " +
+      "is the hospitality surface and keeps its tab — TODAY · DIARY · COMPETE " +
+      "· ME · BOOK. The alternative structure (three tabs, with availability " +
+      "inside the booking flow) is not built and is not needed. " +
+      "What the answer creates is an OBLIGATION rather than a feature: a tab " +
+      "promising a programme has to have one in it. The operating rhythm now " +
+      "fills it every day (9am-6pm, published), and the one-off feed — guest " +
+      "evenings, fixtures, closures — is the club's to keep current. An events " +
+      "table nobody writes to makes the tab emptier than no tab would have " +
+      "been, which is the failure §7.3 warns about.",
+  },
+  {
+    id: "table-capacity",
+    label: "How many covers can the club actually seat?",
+    owner: "Operations",
+    resolved: false,
+    severity: "degraded",
+    note:
+      "club_settings.table_capacity is null, which the portal reads as 'table " +
+      "bookings are not open yet' and says so. Deliberately not defaulted to " +
+      "unlimited: that is the value that sells a Friday evening the kitchen " +
+      "cannot serve, which is the hospitality equivalent of double-booking a " +
+      "lane and is exactly as embarrassing in front of a guest. Table booking " +
+      "is Members Portal §16's 'strongly recommended' item — without it the " +
+      "portal inverts the hospitality-first frame in the surface members touch " +
+      "most.",
+  },
+  {
+    id: "spectator-capacity",
+    label: "Does a spectator occupy one of the club's covers?",
+    owner: "Operations",
+    resolved: false,
+    severity: "degraded",
+    note:
+      "Members Portal §7.4 says a spectator 'consumes neither, but does consume " +
+      "a seat and a name on the arrivals list'. The name on the arrivals list " +
+      "is unconditional and is built. Whether they also occupy a cover is a " +
+      "question about how the club seats people, so `occupancyOf` returns zero " +
+      "and this is registered rather than guessed. Zero fails safe: a " +
+      "spectator who turns out to need a seat is a seat found on the night, " +
+      "where a guessed count silently refuses bookings the club would have " +
+      "taken and nobody ever sees it happen.",
+  },
+  {
+    id: "offline-credential",
+    label: "Founder-facing revocation control, before any credential is cached",
+    owner: "Build team",
+    resolved: false,
+    severity: "blocker",
+    note:
+      "Members Portal §9.2: 'Cache nothing until revocation exists.' The " +
+      "security review names a founder-facing revocation control as a launch " +
+      "blocker, and a cached membership card with a 24-hour life is only safe " +
+      "if there is something to race against it. Until the control ships the " +
+      "membership card is ONLINE-ONLY — which is how it is built, and the " +
+      "screen says so rather than failing quietly at reception. The time-to- " +
+      "live itself is a security posture decision (§16 recommends 24 hours), " +
+      "not a technical one.",
   },
   {
     id: "legal",

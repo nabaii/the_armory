@@ -139,7 +139,7 @@ export function Today({
               {row.name}
             </span>
             <span className="block truncate text-sm text-[--color-sight-ink]">
-              {row.subtitle} · {row.discipline} · {row.time}
+              {row.subtitle} · {row.purpose} · {row.time}
             </span>
             {/* The one line. §4.3 forbids a stack of conditions, so there is room
                 for exactly this. */}

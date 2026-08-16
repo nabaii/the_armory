@@ -113,6 +113,60 @@ export const PARTICIPANT_ROLES = [
 ] as const;
 export type ParticipantRole = (typeof PARTICIPANT_ROLES)[number];
 
+/**
+ * WHAT A BOOKING IS FOR — Members Portal §7.4.
+ *
+ *   "Shoot, table, both and spectate require a `booking_type` on the booking,
+ *    and availability must model table capacity separately from lane capacity."
+ *
+ * ===========================================================================
+ * THIS LIST IS THE HOSPITALITY-FIRST PRINCIPLE, EXPRESSED AS A COLUMN
+ *
+ * The governing frame is "a hospitality operation with a shooting range
+ * attached", and priority inversion is a named design risk. Until this column
+ * existed, every booking in the system was a lane — which meant the club's own
+ * schema could not express a member coming in to eat, and a member who wanted
+ * to could only do it by booking a firing point they did not intend to use.
+ *
+ * The four are equal. `table` is not a lesser booking than `shoot`, and no
+ * screen may present it as one (§7.4, step 2: "Four equal options").
+ *
+ * What each consumes is the whole reason the distinction is in the database:
+ *
+ *   shoot     one firing position, one seat at neither table nor deck
+ *   table     one table seat, NO lane
+ *   both      one firing position AND one table seat
+ *   spectate  neither a lane nor a table — but a seat on the premises and,
+ *             more importantly, a NAME ON THE ARRIVALS LIST. A person in the
+ *             building whom the desk did not expect is the failure this row
+ *             prevents.
+ *
+ * src/domain/availability.ts holds the arithmetic; this is the vocabulary.
+ */
+export const BOOKING_TYPES = ["shoot", "table", "both", "spectate"] as const;
+export type BookingType = (typeof BOOKING_TYPES)[number];
+
+/**
+ * WHAT IS ON — Members Portal §7.3, §12 item 5.
+ *
+ *   "M0 through M10 cover people, admission, hosting, booking, desk, armoury,
+ *    lane, money, dashboard and hardening. Nothing holds *what is on this
+ *    Thursday*."
+ *
+ * The Diary draws on three feeds. Two of them already exist — the operating
+ * rhythm comes from opening hours, fixtures come from the leagues product — so
+ * this entity carries only the third: the one-offs. A guest evening, the Aduvie
+ * tournament, a closure for a public holiday.
+ *
+ * `closure` is on the list and is not an event in the ordinary sense. It is the
+ * only way the club can say "we are open on Thursdays, except this Thursday"
+ * without editing its opening hours and forgetting to put them back — and a
+ * member who drives to a closed range because the portal said it was open is
+ * the single worst thing this surface can do.
+ */
+export const PROGRAMME_KINDS = ["event", "fixture", "closure"] as const;
+export type ProgrammeKind = (typeof PROGRAMME_KINDS)[number];
+
 export const SESSION_STATUSES = ["open", "closed"] as const;
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 

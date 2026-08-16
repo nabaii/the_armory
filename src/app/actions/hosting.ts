@@ -32,127 +32,19 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { getArmoryDb, schema } from "@/db/armory/client";
 import { evaluate } from "@/domain/capability";
-import { capacityFor } from "@/domain/availability";
-import { format, fromStorage } from "@/lib/money";
 import { uuidv7 } from "@/lib/uuidv7";
 import { log } from "@/server/log";
-import { applyBookingEvent, draftBooking } from "@/server/armory/bookings";
 import { applyInvitationEvent, issueInvitation } from "@/server/armory/invitations";
 import { resolveArmoryMember } from "@/server/armory/member-session";
 import { record } from "@/server/armory/record";
 import { PostgresRecordStore } from "@/server/armory/postgres-store";
-import { and, eq, gte } from "drizzle-orm";
+
+import { overagePriceLabel } from "@/server/armory/overage";
 
 import type { HostingState } from "@/lib/hosting-state";
 
 const store = new PostgresRecordStore();
-
-/* ============================================================================
-   BOOK A SESSION
-   ========================================================================= */
-
-export async function bookSession(
-  _previous: HostingState,
-  form: FormData,
-): Promise<HostingState> {
-  const resolution = await resolveArmoryMember();
-  if (resolution.state !== "member") {
-    return { ok: false, formError: signedOutMessage(resolution.state) };
-  }
-
-  const member = resolution.member;
-  const slotStartRaw = String(form.get("slotStart") ?? "");
-  const discipline = String(form.get("discipline") ?? "");
-
-  if (!slotStartRaw || !discipline) {
-    return { ok: false, formError: "Choose a session before booking." };
-  }
-
-  const slotStart = new Date(slotStartRaw);
-  if (Number.isNaN(slotStart.getTime())) {
-    return { ok: false, formError: "That session could not be read. Choose it again." };
-  }
-
-  /* §4 MAY_BOOK, evaluated by the same service the desk calls. The tier's
-     horizon, its concurrent limit and its discipline access are all decided
-     there — this action does not re-implement any of them. */
-  const decision = evaluate(member.subject, {
-    capability: "MAY_BOOK",
-    now: new Date(),
-    slotStart,
-    discipline,
-    heldBookings: await countHeldBookings(member.membershipId),
-  });
-
-  if (!decision.allowed) {
-    return { ok: false, formError: decision.reason.message };
-  }
-
-  const requestId = String(form.get("requestId") ?? uuidv7());
-  const slotEnd = new Date(String(form.get("slotEnd") ?? slotStart.toISOString()));
-
-  try {
-    const outcome = await record(
-      store,
-      {
-        requestId,
-        operation: "bookings.draft",
-        actor: { staffUserId: null, deviceId: null },
-        occurredAt: new Date(),
-      },
-      async (tx) => {
-        const drafted = await draftBooking(tx, {
-          hostMembershipId: member.membershipId,
-          hostPersonId: member.personId,
-          slotStart,
-          slotEnd,
-          discipline,
-        });
-
-        if (drafted.outcome === "refused") return drafted;
-
-        /* Confirmed immediately when no guest is named. §5 keeps `draft` for
-           the window in which a member is still adding guests; a solo booking
-           has nothing to add and leaving it in draft would hold no lane and
-           show up nowhere. */
-        const lanes = await tx
-          .select({
-            id: schema.lanes.id,
-            discipline: schema.lanes.discipline,
-            status: schema.lanes.status,
-            positionCapacity: schema.lanes.positionCapacity,
-          })
-          .from(schema.lanes)
-          .where(eq(schema.lanes.discipline, discipline));
-
-        return applyBookingEvent(tx, {
-          bookingId: drafted.result.bookingId,
-          event: { type: "confirm" },
-          occurredAt: new Date(),
-          capacity: capacityFor(lanes, discipline),
-        });
-      },
-    );
-
-    if (outcome.status === "refused") {
-      return { ok: false, formError: outcome.refusal.message };
-    }
-
-    revalidatePath("/portal");
-    return { ok: true, message: "Booked. You will find it on your portal home." };
-  } catch (error) {
-    log.error("hosting.book.failed", {
-      membershipId: member.membershipId,
-      message: error instanceof Error ? error.message : String(error),
-    });
-    return {
-      ok: false,
-      formError: "We could not book that just now. Try again in a moment.",
-    };
-  }
-}
 
 /* ============================================================================
    INVITE A GUEST
@@ -321,22 +213,6 @@ export async function cancelInvitation(
    HELPERS
    ========================================================================= */
 
-/**
- * §14: "Guest overage price — Blocks charging logic. Configurable, so not
- * structurally blocking. Needed by: Before M8."
- *
- * Not settled, so this returns null and the capability service says "the guest
- * rate" rather than inventing a number. §12 requires the price be SHOWN, and a
- * made-up figure shown to a member is worse than a vaguer sentence — they would
- * hold the club to it.
- */
-function overagePriceLabel(): string | null {
-  const kobo = process.env.GUEST_OVERAGE_KOBO;
-  if (!kobo) return null;
-  const parsed = fromStorage(kobo);
-  return format(parsed);
-}
-
 function visitUrl(token: string): string {
   const base = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "";
   return `${base}/visit/${token}`;
@@ -353,30 +229,3 @@ function signedOutMessage(state: string): string {
   }
 }
 
-/**
- * Bookings this member is currently holding.
- *
- * §4's MAY_BOOK compares this against the tier's `concurrentBookingsMax`, and
- * `Context` defines it as "Confirmed bookings this member already holds" —
- * CONCURRENT, not cumulative. Counting every booking they have ever made would
- * block a member permanently once they passed the limit, which is the kind of
- * bug that looks like the rule working until somebody has been a member for a
- * year.
- *
- * So: confirmed, and still ahead of them. A booking they have already shot is
- * not being held.
- */
-async function countHeldBookings(membershipId: string): Promise<number> {
-  const rows = await getArmoryDb()
-    .select({ id: schema.bookings.id })
-    .from(schema.bookings)
-    .where(
-      and(
-        eq(schema.bookings.hostMembershipId, membershipId),
-        eq(schema.bookings.status, "confirmed"),
-        gte(schema.bookings.slotStart, new Date()),
-      ),
-    );
-
-  return rows.length;
-}

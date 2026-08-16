@@ -150,7 +150,17 @@ export function personDetail(
     ...waiver,
   });
 
-  const disciplines = [...new Set(arrivals.map((a) => a.discipline))];
+  /* Arrivals that touch no firing line carry no discipline (Members Portal
+     §7.4), and a null in this set would ask the capability service whether the
+     member may shoot nothing — which has no answer and would render as a block
+     with an empty name. */
+  const disciplines = [
+    ...new Set(
+      arrivals
+        .map((a) => a.discipline)
+        .filter((discipline): discipline is string => discipline !== null),
+    ),
+  ];
 
   const blocks: BlockLine[] = foreseeableBlocks(subject, {
     now,

@@ -1,7 +1,8 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import type { ArmoryReader, ArmoryTx } from "@/db/armory/client";
 import { schema } from "@/db/armory/client";
-import type { BookingStatus } from "@/domain/enums";
+import type { BookingStatus, BookingType } from "@/domain/enums";
+import { usesLane } from "@/domain/availability";
 import { bookingTransition, type BookingEvent } from "@/domain/state-machines";
 import { toDateColumn } from "@/lib/time";
 import { uuidv7 } from "@/lib/uuidv7";
@@ -59,13 +60,35 @@ export async function draftBooking(
     readonly hostPersonId: string;
     readonly slotStart: Date;
     readonly slotEnd: Date;
-    readonly discipline: string;
+    /**
+     * §7.4. Null where the booking touches no firing line, which is only valid
+     * for `table` and `spectate` — checked below and again by the CHECK
+     * constraint in drizzle/0008.
+     */
+    readonly discipline: string | null;
+    /** Defaults to `shoot`, which is what every booking was before §7.4. */
+    readonly bookingType?: BookingType;
   },
 ): Promise<Written<BookingResult>> {
   if (input.slotEnd <= input.slotStart) {
     return refused({
       code: "EMPTY_SLOT",
       message: "That session has no length.",
+    });
+  }
+
+  const bookingType = input.bookingType ?? "shoot";
+
+  /* §7.4's pairing rule, refused here as a sentence rather than left to surface
+     as a constraint violation. The database is still the enforcement — see the
+     CHECK in drizzle/0008 — but a member who somehow reaches this deserves the
+     block, not a 500. */
+  if (usesLane(bookingType) !== (input.discipline !== null)) {
+    return refused({
+      code: "BOOKING_TYPE_MISMATCH",
+      message: usesLane(bookingType)
+        ? "That booking needs a line to shoot on."
+        : "That booking does not use a firing line.",
     });
   }
 
@@ -80,6 +103,7 @@ export async function draftBooking(
       slotStart: input.slotStart,
       slotEnd: input.slotEnd,
       discipline: input.discipline,
+      bookingType,
       status: "draft",
     })
     .onConflictDoNothing({ target: schema.bookings.id })
@@ -110,6 +134,7 @@ export async function draftBooking(
         hostMembershipId: input.hostMembershipId,
         slotStart: input.slotStart.toISOString(),
         discipline: input.discipline,
+        bookingType,
       },
     },
   ]);
@@ -234,8 +259,18 @@ export async function applyBookingEvent(
 
   /* Capacity, checked here rather than in the pure transition because it is a
      fact about the range at this instant and the transition has no database.
-     Only on confirm: cancelling a booking on a full slot must always work. */
-  if (input.event.type === "confirm" && input.capacity !== undefined) {
+     Only on confirm: cancelling a booking on a full slot must always work.
+
+     A booking with no discipline touches no firing line — §7.4's `table` and
+     `spectate` — so there is no lane capacity to check and none is checked. The
+     covers are checked by the caller against `club_settings.table_capacity`,
+     which is a different finite thing; conflating the two here would refuse a
+     dinner because the pistol line was full. */
+  if (
+    input.event.type === "confirm" &&
+    input.capacity !== undefined &&
+    booking.discipline !== null
+  ) {
     const positions = await countParticipants(tx, booking.id);
     const taken = await positionsTakenInSlot(tx, {
       discipline: booking.discipline,
@@ -412,13 +447,20 @@ export async function bookedSlotsFrom(
   tx: ArmoryReader,
   input: { readonly from: Date; readonly discipline: string },
 ): Promise<
-  { slotStart: Date; slotEnd: Date; discipline: string; positions: number }[]
+  {
+    slotStart: Date;
+    slotEnd: Date;
+    discipline: string | null;
+    bookingType: BookingType;
+    positions: number;
+  }[]
 > {
   return tx
     .select({
       slotStart: schema.bookings.slotStart,
       slotEnd: schema.bookings.slotEnd,
       discipline: schema.bookings.discipline,
+      bookingType: schema.bookings.bookingType,
       positions: sql<number>`count(${schema.bookingParticipants.id})::int`,
     })
     .from(schema.bookings)
@@ -438,5 +480,6 @@ export async function bookedSlotsFrom(
       schema.bookings.slotStart,
       schema.bookings.slotEnd,
       schema.bookings.discipline,
+      schema.bookings.bookingType,
     );
 }

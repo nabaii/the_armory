@@ -78,7 +78,12 @@ export async function POST(
           .where(eq(schema.bookings.id, id))
           .limit(1);
 
-        if (booking) {
+        /* A booking with no discipline touches no firing line — §7.4's `table`
+           and `spectate` — so there is no lane capacity to compute and none is
+           passed. `applyBookingEvent` skips the check for the same reason. */
+        if (booking?.discipline) {
+          const discipline = booking.discipline;
+
           const lanes = await tx
             .select({
               id: schema.lanes.id,
@@ -87,9 +92,9 @@ export async function POST(
               positionCapacity: schema.lanes.positionCapacity,
             })
             .from(schema.lanes)
-            .where(eq(schema.lanes.discipline, booking.discipline));
+            .where(eq(schema.lanes.discipline, discipline));
 
-          capacity = capacityFor(lanes, booking.discipline);
+          capacity = capacityFor(lanes, discipline);
         }
       }
 

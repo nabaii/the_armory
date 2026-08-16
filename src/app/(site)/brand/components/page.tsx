@@ -21,8 +21,13 @@ import {
 } from "@/components/ui/Form";
 import { disciplines } from "@/content/disciplines";
 import { ritual } from "@/content/ritual";
+import { RemedyStack } from "@/components/member/RemedyCard";
+import { StatusPill } from "@/components/member/StatusPill";
+import { AllowanceMeter } from "@/components/member/AllowanceMeter";
+import { ScoreLine } from "@/components/member/ScoreLine";
+import { ProgrammeLine } from "@/components/member/ProgrammeLine";
 import { fixtureCredentials, fixtureTiers } from "@/lib/fixtures";
-import { cta, site } from "@/lib/site";
+import { cta, routes, site } from "@/lib/site";
 
 /* ============================================================================
    COMPONENT REFERENCE — internal.
@@ -251,6 +256,168 @@ export default function ComponentsPage() {
           system, so they are machine-verified.
         </Body>
         <WaitlistCapture source="component-reference" className="mt-4" />
+      </Section>
+
+      {/* ==================================================================
+          THE MEMBERS APP — Members Portal Design Specification §11.
+
+          "All five belong in the existing component inventory at
+           /brand/components so they can be reviewed against the palette page
+           rather than discovered in situ."
+
+          Rendered with fixture content, on the grounds they actually appear on.
+          MembersShell is the one absentee and deliberately so: it is a sticky
+          header with a tab bar, and a second one on this page would overlay the
+          real one and be reviewed in a state it never occupies.
+          ================================================================== */}
+
+      <Ref
+        n="11"
+        name="StatusPill"
+        note="Clear · attention · blocked. Shared with the desk console, because a member told they are clear must not stand in front of an officer whose screen says otherwise. Three signals — glyph, fill, word — so it survives greyscale, sunlight and a phone held at arm's length."
+      />
+      <Section ground="chalk">
+        <div className="flex flex-wrap gap-2">
+          <StatusPill status="clear" />
+          <StatusPill status="attention" />
+          <StatusPill status="blocked" />
+          <StatusPill status="attention" label="Not opened" />
+        </div>
+      </Section>
+
+      <Ref
+        n="12"
+        name="RemedyCard"
+        note="Renders one refusal from the capability service — reason, remedy, action. It takes a sentence and nothing you could pass it would let it decide anything, which is how P1 is enforced by a type signature rather than by a code review. Today's action stack is this component in a loop."
+      />
+      <Section ground="chalk">
+        <RemedyStack
+          items={[
+            {
+              reason: "Your membership lapsed on 14 March.",
+              remedy: "Renew in the portal.",
+              status: "blocked",
+              action: { href: routes.portalAccount, label: "Renew your membership" },
+            },
+            {
+              reason: "Firearm licence expires 12 October 2026.",
+              remedy: "Send the club your renewed licence before it lapses.",
+              status: "attention",
+            },
+          ]}
+        />
+      </Section>
+
+      <Ref
+        n="13"
+        name="AllowanceMeter"
+        note="What remains, and when the period turns. The overage price is shown ONLY at confirmation — §7.4 is explicit that a member doing mental arithmetic invites fewer people, and invitations are the only growth channel the club has. Both states are below; the first is what Me and booking step four render."
+      />
+      <Section ground="chalk">
+        <AllowanceMeter
+          className="max-w-[36rem]"
+          remaining={4}
+          included={6}
+          periodEnd={new Date("2027-01-31T00:00:00.000Z")}
+        />
+        <div className="mt-8 border-t border-[var(--rule)]/30 pt-6">
+          <Caption className="mb-2 block">At confirmation, with an overage:</Caption>
+          <AllowanceMeter
+            className="max-w-[36rem]"
+            remaining={0}
+            included={6}
+            periodEnd={new Date("2027-01-31T00:00:00.000Z")}
+            overage={{ count: 2, price: "the guest rate" }}
+          />
+        </div>
+      </Section>
+
+      <Ref
+        n="14"
+        name="ScoreLine"
+        note="One round: score, discipline, date, and its relation to the member's own history — which is the field that makes the other three worth rendering. A personal best gets one word and the centre dot. No confetti: a good club, not a mobile game."
+      />
+      <Section ground="chalk">
+        <div className="flex flex-col gap-6">
+          <ScoreLine
+            score={{
+              reads: "578",
+              discipline: "10m air rifle",
+              formatLabel: "60 shots",
+              capturedAt: new Date("2026-08-11T18:30:00.000Z"),
+              relation: "Up 14 on your last twelve.",
+              isPersonalBest: true,
+            }}
+          />
+          <ScoreLine
+            score={{
+              reads: "541",
+              discipline: "10m air rifle",
+              formatLabel: "60 shots",
+              capturedAt: new Date("2026-07-28T18:30:00.000Z"),
+              relation: null,
+              superseded: true,
+            }}
+          />
+        </div>
+      </Section>
+
+      <Ref
+        n="15"
+        name="ProgrammeLine"
+        note="One thing that is on, shared by Today's Tonight card and the Diary's day list. A closure is the only kind that carries a pill — it is the single entry whose consequence is a member NOT driving to the National Stadium, and giving every kind a colour would make it ordinary."
+      />
+      <Section ground="soffit">
+        <ul className="flex flex-col gap-3">
+          <li>
+            <ProgrammeLine
+              entry={{
+                kind: "service",
+                title: "Range and deck",
+                detail: null,
+                startsMinute: 9 * 60,
+                endsMinute: 21 * 60,
+                staffed: true,
+              }}
+            />
+          </li>
+          <li>
+            <ProgrammeLine
+              entry={{
+                kind: "service",
+                title: "Club open",
+                detail: "No range officer on the floor.",
+                startsMinute: 12 * 60,
+                endsMinute: 22 * 60,
+                staffed: false,
+              }}
+            />
+          </li>
+          <li>
+            <ProgrammeLine
+              entry={{
+                kind: "event",
+                title: "Guest evening",
+                detail: null,
+                startsMinute: 18 * 60,
+                endsMinute: 21 * 60,
+                staffed: false,
+              }}
+            />
+          </li>
+          <li>
+            <ProgrammeLine
+              entry={{
+                kind: "closure",
+                title: "Closed — public holiday",
+                detail: null,
+                startsMinute: null,
+                endsMinute: null,
+                staffed: false,
+              }}
+            />
+          </li>
+        </ul>
       </Section>
     </>
   );

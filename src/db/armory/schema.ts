@@ -18,6 +18,7 @@ import { uuidv7 } from "@/lib/uuidv7";
 import {
   APPLICATION_STATUSES,
   BOOKING_STATUSES,
+  BOOKING_TYPES,
   CAPTURE_METHODS,
   CUSTODY_EVENT_TYPES,
   DEVICE_SURFACES,
@@ -31,6 +32,7 @@ import {
   PARTICIPANT_ROLES,
   PAYMENT_PURPOSES,
   PAYMENT_STATUSES,
+  PROGRAMME_KINDS,
   SESSION_STATUSES,
   SPONSOR_TYPES,
   STAFF_ROLES,
@@ -192,10 +194,217 @@ export const clubSettings = armory.table(
       .notNull()
       .default(sql`'[]'::jsonb`),
 
+    /**
+     * §14, and Members Portal §12 item 2. How long one booking holds a lane.
+     *
+     * Null, like everything else here, means the club has not said. It is read
+     * by `clubAvailabilityPolicy` and a null produces no slots rather than a
+     * guessed hour — see the note on `openingHours` below, which is the same
+     * argument and the more consequential half of it.
+     */
+    sessionMinutes: integer("session_minutes"),
+
+    /**
+     * The least notice the club accepts on a booking, in minutes.
+     *
+     * Distinct from a tier's booking horizon, which is the far end of the same
+     * window and belongs to the member rather than to the range. Null defaults
+     * to zero notice in the reader — the safe direction here is the permissive
+     * one, because the alternative is silently refusing bookings the club would
+     * have taken, which nobody would ever see.
+     */
+    bookingLeadTimeMinutes: integer("booking_lead_time_minutes"),
+
+    /**
+     * THE OPERATIONAL BUFFER BETWEEN ONE SESSION AND THE NEXT, IN MINUTES.
+     *
+     * Decided by the founder, 16 August 2026: a 60-minute session with a
+     * 15-minute buffer.
+     *
+     * =======================================================================
+     * IT BELONGS TO THE RANGE, NOT TO THE MEMBER
+     *
+     * This is the distinction the column exists to hold. The member's session
+     * is `session_minutes` and that is what their booking says, what the desk
+     * expects and what the lane is theirs for. The buffer is the club's:
+     * clearing the line, resetting targets, walking one relay off and briefing
+     * the next.
+     *
+     * So it is NOT added to the booking's length. A member who books 09:00 has
+     * a booking that ends at 10:00, and the next bookable slot is 10:15. If the
+     * buffer were folded into the session the member would appear to have the
+     * lane for 75 minutes, which is not what they were sold and not what the
+     * desk would enforce.
+     *
+     * =======================================================================
+     * NULL IS ZERO HERE, AND THAT IS SAFE IN A WAY THE OTHERS ARE NOT
+     *
+     * Every other unset value in this table produces nothing rather than a
+     * guess. This one defaults to no buffer, because zero is a coherent
+     * operating decision — back-to-back sessions — and because a club that has
+     * not thought about turnaround is describing the behaviour the system had
+     * before this column existed. Nothing is invented and nothing silently
+     * narrows.
+     */
+    turnaroundMinutes: integer("turnaround_minutes"),
+
+    /**
+     * §7.4's table capacity — SEATS, not lanes.
+     *
+     *   "A table-only booking consumes no lane; a spectator consumes neither,
+     *    but does consume a seat and a name on the arrivals list."
+     *
+     * Null means the club has not counted its covers, and the reader treats
+     * that as "table bookings are not open yet" rather than as unlimited. An
+     * unlimited default would let the portal sell a Friday evening the kitchen
+     * cannot serve, which is the hospitality equivalent of double-booking a
+     * lane and is exactly as embarrassing in front of a guest.
+     */
+    tableCapacity: integer("table_capacity"),
+
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("club_settings_singleton_key").on(t.singleton)],
+);
+
+/* ============================================================================
+   OPENING HOURS — Members Portal §12, item 2
+
+   "Opening hours — column, migration, founder screen. Unblocks the availability
+    grid, the operating-rhythm feed, the red action. Currently blocks the
+    booking calendar entirely."
+
+   ===========================================================================
+   WHY THIS IS A TABLE AND NOT A JSONB COLUMN ON club_settings
+
+   It was very nearly the latter — one `opening_hours` document, edited whole,
+   no join. Three things argued it out of that shape and the third is decisive.
+
+   1. A period is a row the founder edits, and a founder screen that PUTs a
+      whole document loses a concurrent edit silently. Rows do not.
+   2. `staffed` is a per-period fact (src/domain/availability.ts is explicit
+      about why: §13 keeps the officer rota out of the system, so coverage is
+      declared against the hours the club has an officer on the floor). A
+      document would carry the same field with none of the constraint.
+   3. THE CLUB'S WEEK IS A THING THE DIARY READS, not just something booking
+      consumes. §7.3's operating-rhythm feed — "service hours, which evenings
+      the deck is lit, closures" — is a query against these rows on a date
+      range. Against a jsonb document it is a full parse on every render of
+      every member's Diary, and it cannot be indexed.
+
+   ===========================================================================
+   AN EMPTY TABLE IS AN HONEST TABLE
+
+   No seed, no default week, no "9 to 5 Monday to Saturday" to be going on
+   with. `UNCONFIGURED_AVAILABILITY` in src/domain/availability.ts already sets
+   out at length why a plausible default is worse than none: it works, so it
+   survives into production and becomes the club's opening hours by accident.
+   Zero rows produces zero slots and one honest sentence, which is P2 of the
+   Members Portal specification and the shipping state of this screen until the
+   founder says otherwise.
+   ========================================================================= */
+
+export const openingHours = armory.table(
+  "opening_hours",
+  {
+    id: id(),
+
+    /** 0 = Sunday, matching `Date#getDay` and `lagosParts().weekday`. */
+    weekday: smallint("weekday").notNull(),
+
+    /** Minutes since Lagos midnight. 09:00 is 540. */
+    opensMinute: integer("opens_minute").notNull(),
+    closesMinute: integer("closes_minute").notNull(),
+
+    /**
+     * Whether an officer is on the floor for this period.
+     *
+     * An unstaffed period yields NO shooting slots and still appears in the
+     * Diary's programme — the deck can be open on an evening the range is not,
+     * and a club that could not say so would be a booking tool with a calendar
+     * bolted on. See `OpeningPeriod` in src/domain/availability.ts.
+     */
+    staffed: boolean("staffed").notNull().default(true),
+
+    /**
+     * What this period IS, in the club's own words — "Range and deck",
+     * "Deck and kitchen only". Rendered in the Diary; never parsed.
+     */
+    label: text("label"),
+
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("opening_hours_weekday_idx").on(t.weekday),
+    /* One period may not be entered twice for the same weekday and start. Two
+       identical periods would double every slot they produce. */
+    uniqueIndex("opening_hours_period_key").on(t.weekday, t.opensMinute),
+  ],
+);
+
+/* ============================================================================
+   THE PROGRAMME — Members Portal §7.3 feed three, §12 item 5
+
+   "There is no events entity anywhere in the eleven milestones. A club whose
+    system can record a firearm custody event to forensic standard but cannot
+    record that the kitchen is open on Friday has, at the level of its schema,
+    told the truth about what it thinks it is."
+
+   This is the one-off feed. The other two Diary feeds are derived and no rows
+   are written for them: the operating rhythm comes from `opening_hours` above,
+   and fixtures come from the leagues product in the public schema. Copying
+   either into this table would create a second source of truth for a fact the
+   club already holds — and the first one to drift would be a member arriving
+   for a league round that had moved.
+   ========================================================================= */
+
+export const programmeKind = armory.enum("programme_kind", PROGRAMME_KINDS);
+
+export const events = armory.table(
+  "events",
+  {
+    id: id(),
+
+    kind: programmeKind("kind").notNull().default("event"),
+
+    /** Rendered as written. The club's voice, not a formatted string. */
+    title: text("title").notNull(),
+    /** One or two sentences at most. Optional — a title is often the whole fact. */
+    detail: text("detail"),
+
+    /**
+     * The Lagos calendar day this sits on.
+     *
+     * A `date` rather than a pair of timestamps because the Diary is a day
+     * view: a member asks what is on this Thursday, not what is on between
+     * 18:00 and 22:00 on this Thursday. The times below refine it where they
+     * are known and are null where the club has said only "Saturday".
+     */
+    onDate: date("on_date").notNull(),
+
+    /** Minutes since Lagos midnight, as `opening_hours`. Null means all day. */
+    startsMinute: integer("starts_minute"),
+    endsMinute: integer("ends_minute"),
+
+    /**
+     * Whether members see it.
+     *
+     * Default false. The founder drafts a guest evening three weeks out and
+     * decides later whether it is happening; a draft that appeared in every
+     * member's Diary the moment it was typed would make the club look
+     * disorganised in the surface it is most often judged by.
+     */
+    published: boolean("published").notNull().default(false),
+
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("events_date_idx").on(t.onDate),
+    index("events_published_idx").on(t.published, t.onDate),
+  ],
 );
 
 /* ============================================================================
@@ -997,6 +1206,7 @@ export const lanes = armory.table(
 );
 
 export const bookingStatus = armory.enum("booking_status", BOOKING_STATUSES);
+export const bookingType = armory.enum("booking_type", BOOKING_TYPES);
 
 export const bookings = armory.table(
   "bookings",
@@ -1015,7 +1225,30 @@ export const bookings = armory.table(
     bookingDate: date("booking_date").notNull(),
     slotStart: timestamp("slot_start", { withTimezone: true }).notNull(),
     slotEnd: timestamp("slot_end", { withTimezone: true }).notNull(),
-    discipline: text("discipline").notNull(),
+
+    /**
+     * Members Portal §7.4. What the member is coming in for.
+     *
+     * Defaulted to `shoot` so every booking written before this column existed
+     * is what it always was, rather than becoming null and forcing every reader
+     * to decide what a booking with no purpose means.
+     *
+     * The vocabulary and what each type consumes are set out on `BOOKING_TYPES`
+     * in src/domain/enums.ts; the arithmetic is in src/domain/availability.ts.
+     */
+    bookingType: bookingType("booking_type").notNull().default("shoot"),
+
+    /**
+     * Null for a booking that touches no firing line.
+     *
+     * This nullability IS §7.4's design rule, expressed as a constraint: a
+     * table-only or spectating booking must not be able to name a discipline,
+     * because a discipline on a booking that consumes no lane is how the
+     * availability query starts counting people who are not shooting against
+     * the range's capacity. The CHECK in drizzle/0008 makes the pairing
+     * mandatory in both directions.
+     */
+    discipline: text("discipline"),
 
     status: bookingStatus("status").notNull().default("draft"),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),

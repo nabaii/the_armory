@@ -96,6 +96,7 @@ function pack(overrides: Partial<DayPack> = {}): DayPack {
         sessionId: null,
         role: "member_shooter",
         discipline: "10m-air-rifle",
+        bookingType: "shoot",
         slotStart: "2026-08-10T16:00:00.000Z",
         hostPersonId: null,
         invitationId: null,
