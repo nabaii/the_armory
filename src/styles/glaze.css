@@ -1,0 +1,548 @@
+/* ============================================================================
+   ARMORY GLAZING — the content material.
+
+   Source of truth: docs/03_The_Armory_Brand_Guidelines.docx  (§4 warm neutrals,
+                    §6 textures are photographed not invented, §8 the graphic
+                    devices, §11 no gunmetal drift)
+                    docs/02_The_Armory_Design_Specification.docx  (§6 structure,
+                    §9 WCAG AA)
+
+   glass.css is the CHROME's material: a bar floating over an unknown backdrop.
+   This is the CONTENT's, and the difference between the two is the whole file.
+
+   ----------------------------------------------------------------------------
+   THE PROBLEM THIS SOLVES, WHICH IS NOT "THE SITE NEEDS MORE STYLE"
+
+   The site is a vertical stack of full-bleed colour bands. The typography is
+   excellent and the structure is legible, and it has no material and no depth:
+   every surface is at exactly the same distance from the reader, so nothing can
+   be foreground, nothing can be set into anything, and the frosted chrome the
+   app already has is frosted over nothing.
+
+   The photography that was meant to carry the depth does not exist yet and is
+   not on the critical path for this work — ImageSlot exists precisely so the
+   product can be built without it. So the material has to come from somewhere
+   that is not a photograph.
+
+   ----------------------------------------------------------------------------
+   WHERE IT COMES FROM: SETTING OUT
+
+   Architects publish setting-out drawings — a grid of reference lines with
+   heavier gridlines at intervals, used to position a building on its site. A
+   range publishes the same document in another idiom: the firing line, the lane
+   divisions, the distance markers. Both are precision measurement geometry, and
+   so is the club's mark: a broken ring with ticks.
+
+   So the ground under this application is a setting-out field, and the panels
+   on it are GLAZING — sheet glass set square into an opening, which is the
+   other thing this building is made of.
+
+   ----------------------------------------------------------------------------
+   THE FIELD BAND IS TERRAZZO, AND THAT WAS FOUND BY LOOKING
+
+   The first build put the field on Chalk bands, which is what a light interface
+   reaches for by default. On screen it did almost nothing: a Chalk pane over a
+   Chalk field composites to #F2F1EE against a #EBEBE8 ground, a difference of
+   about four points of luminance. Every contrast figure passed and the material
+   was invisible — the panes read as faint outlines, and glazing you cannot see
+   through is a border with a filter behind it.
+
+   Glazing needs the ground to be DARKER than the pane, which is also the only
+   way it works in a building: you read a window because the room behind it is
+   not as bright as the glass. On Terrazzo the same pane composites to #E9E7E3
+   over a #D6D2CC field — roughly twenty points, which is the difference between
+   a surface and a suggestion.
+
+   Terrazzo was already the answer before the measurement. tokens.css calls it
+   "the signature surface of the building. Section grounds, cards, panels", and
+   the actual floor of the actual club is terrazzo with glazing above it. The
+   band system was simply never using it for what it names.
+
+   So: A FIELD BAND IS TERRAZZO. Chalk stays what it has always been — the
+   ground for reading, for prose, and for bands that hold sentences.
+
+   That is a deliberate refusal of the house style of the genre. Glassmorphism
+   elsewhere means a 32px blur, a 24px radius and a saturated gradient behind
+   it. Every one of those is wrong here:
+
+     the radius      --radius-panel is 0 and --radius-control is 2px. Precision
+                     equipment has crisp edges, and squareness is the single
+                     cheapest thing that makes this material unmistakably this
+                     club's rather than a system component from a phone.
+     the gradient    §6 is explicit that the textures are PHOTOGRAPHED FROM THE
+                     BUILDING and not invented, so no CSS pretends to be
+                     terrazzo. A ruled grid is a drawing, not a material — the
+                     same licence .u-rule-segmented already took when it derived
+                     a divider from the mark's tick geometry.
+     the blur        Capped, and dropped entirely on small repeated elements.
+                     See the performance note below.
+
+   What is left is the part of the material that is actually load-bearing: a
+   plane of glass with a LIT EDGE, sitting a measurable distance above a drawing
+   you can still read through it.
+
+   ----------------------------------------------------------------------------
+   THE PROOF — 62%, and why it is the same number for light and dark
+
+   The method is the one glass.css and base.css both use: browsers composite
+   normal-blend alpha in sRGB gamma space, so the effective ground behind a
+   label is  a*tint + (1-a)*backdrop  per channel. Every figure below is
+   measured against the WORST backdrop the surface can have, which here is the
+   field at its darkest permitted density (8%) rather than a pure black frame —
+   because unlike the chrome, content glazing sits on a KNOWN ground.
+
+   Light glazing, Chalk tint at 62%:
+
+       on a Chalk field       #F2F1EE   Reticle Black 12.70:1   Sight Ink 6.01:1
+       on a Terrazzo field    #E9E7E3   Reticle Black 11.61:1   Sight Ink 5.50:1
+
+   Dark glazing, Charred Timber tint at 62%:
+
+       on a Charred field     #2B2A28   Chalk 13.15:1   Terrazzo 10.10:1
+       on VIP Teal            #2E4446   Chalk  9.48:1   Terrazzo  7.28:1
+       on Range Teak          #4E3D2C   Chalk  9.50:1   Terrazzo  7.29:1
+       on Soffit Blue         #50585B   Chalk  6.67:1   Terrazzo  5.12:1
+
+   One tint covers both registers with headroom on every ground the club owns,
+   which is worth more than two numbers tuned to two decimal places.
+
+   ----------------------------------------------------------------------------
+   THE CONSEQUENCE THAT MATTERS: MUTED INK COMES BACK
+
+   glass.css had to forbid it. Over an unknown backdrop, Sight Ink measures
+   2.35:1 and there is no tint that recovers it, so the chrome carries hierarchy
+   by weight and ground alone and the file says in capitals not to reach for
+   --color-sight-ink.
+
+   That restriction does not survive the change of context, and it must not be
+   copied here out of habit. Content glazing sits over a ground this codebase
+   chose, so the composite is computable — and Sight Ink measures 6.01:1 on it.
+   The full three-level type hierarchy is available on glazing. A panel that
+   flattened its captions to full ink "because glass" would be throwing away
+   legibility it has actually paid for.
+
+   ----------------------------------------------------------------------------
+   NO LIGHT GLAZING OVER A DARK BAND, AND THE NUMBER THAT SETTLED IT
+
+   The tempting move is a Chalk pane floating on a Charred Timber section. It
+   was measured and it is not available:
+
+       Chalk tint 78% over Charred Timber    Ten Ring Red 2.45:1   FAILS
+       Chalk tint 92% over Charred Timber    Ten Ring Red 3.25:1   passes
+
+   By 92% it is not glass, it is a Chalk rectangle with an expensive filter
+   behind it. So GLAZING TAKES THE REGISTER OF THE BAND IT SITS IN: light panes
+   on light grounds, dark panes on dark ones. That is also how glazing behaves
+   in the building — a window reads as the room it is in, not as a bright hole.
+
+   ----------------------------------------------------------------------------
+   AND SOFFIT BLUE CARRIES NO GLAZING AT ALL
+
+   It is the ground that is neither. It reads as light — it carries Reticle
+   Black at 5.64:1 — so the light pane is the one that looks right on it, and
+   the light pane over it measures:
+
+       Reticle Black   9.63:1   passes
+       Sight Ink       4.57:1   passes AA by seven hundredths
+       Ten Ring Red    2.78:1   FAILS a non-text indicator
+
+   Red is the outright failure and it is enough on its own: the centre dot is
+   the club's active marker, and a pane it cannot be seen on is a pane the app's
+   own vocabulary does not work on.
+
+   The caption figure is the more interesting one. 4.57:1 is a pass, and it is a
+   pass with seven hundredths of headroom on the SMALLEST type this product
+   sets, read by a membership concentrated in the years when contrast
+   sensitivity starts to go. Every other glazed ground clears the same test with
+   a full point or more to spare. Shipping the one surface that only just makes
+   it, for the smallest text, to the audience least able to absorb the
+   difference, is not a trade worth taking for a colour.
+
+   So Soffit Blue bands hold no panes. A band that needs to hold panes and wants
+   a light register uses TERRAZZO, the building's own signature surface, which
+   measures Sight Ink at 5.50:1 and red at 3.35:1 under the same pane.
+   `groundGlaze` in Section.tsx returns null for Soffit rather than the nearest
+   guess, so this cannot be got wrong quietly.
+
+   ----------------------------------------------------------------------------
+   PERFORMANCE — WHY THERE ARE TWO GLAZING CLASSES
+
+   `backdrop-filter` costs in proportion to blurred AREA and to the NUMBER of
+   compositing layers. glass.css could afford it on two bars totalling ~17% of a
+   phone viewport. Content panels are a different shape of risk: a Diary day
+   holds a table board plus three discipline boards, each with seven slot chips.
+   Thirty backdrop-filtered chips on a mid-range Android is a dropped frame per
+   scroll, and it buys nothing — a 44px chip does not have room to show a
+   blurred drawing through itself.
+
+     .u-glaze        the full material. For PANELS: cards, calendars, boards.
+                     Blur capped at 10px, below the chrome's 16px, because it is
+                     resolving a drawing rather than destroying photography.
+     .u-glaze-flat   tint and edge, NO filter. For anything that repeats: chips,
+                     pills, cells, rows.
+
+   Both are the same tint, so the two never disagree about contrast; they differ
+   only in whether the ground behind them is softened. Use the flat one unless
+   the panel is big enough to see through.
+   ========================================================================= */
+
+:root {
+  /* --------------------------------------------------------------------------
+     THE PANE
+     ----------------------------------------------------------------------- */
+
+  /* AA-proven above, for both registers. Do not lower. */
+  --glaze-tint: 62%;
+
+  /* Below the chrome's 16px. This blur resolves a ruled drawing rather than
+     destroying photography, and 10px is where the grid reads as softened
+     instead of erased — which is the whole point of being able to see it. */
+  --glaze-blur: 10px;
+
+  /* The same reason glass.css saturates: a frosted plate over warm materials
+     greys them out, and cool glass IS the gunmetal drift §11 prohibits. */
+  --glaze-saturate: 1.25;
+
+  /* --------------------------------------------------------------------------
+     THE LIT EDGE — the signature, and the part that is not blur
+
+     Real glazing catches light on the edges facing the source. The house light
+     comes from above and to the left, consistently, on every surface: a bright
+     hairline on the top and left, a soft shadow on the bottom and right. That
+     single rule is what makes a square pane read as a physical plane rather
+     than as a translucent rectangle, and it survives at any size — which is why
+     the flat variant keeps it when it drops the blur.
+     ----------------------------------------------------------------------- */
+
+  --glaze-lit: 62%; /* Chalk, on the lit edges */
+  --glaze-shade: 10%; /* Reticle Black, on the shaded edges */
+
+  /* The frame. Sight Grey at the same 25% every divider on the site uses, so
+     glazing does not introduce a second hairline weight. */
+  --glaze-frame: 25%;
+
+  /* --------------------------------------------------------------------------
+     THE SETTING-OUT FIELD
+
+     8px base unit, as everything else on this site. 48px is six units and 192px
+     is four of those — the same 1:4 relationship a drafting grid uses between
+     its minor squares and its reference lines.
+     ----------------------------------------------------------------------- */
+
+  --field-step: 3rem; /* 48px — the minor grid */
+  --field-major: 12rem; /* 192px — the reference lines */
+
+  /* Densities. The worst case the contrast proof above is written against is
+     8%; these sit below it so the proof has headroom rather than sitting on the
+     boundary. The field is meant to be FELT and not read — if a reader notices
+     it as a pattern rather than as a surface, it is too strong. */
+  --field-minor-alpha: 4%;
+  --field-major-alpha: 7%;
+}
+
+/* ============================================================================
+   THE FIELD
+   ========================================================================= */
+
+/* --- .u-field ---------------------------------------------------------------
+   A setting-out drawing on the ground, under the content.
+
+   Drawn on a pseudo-element at z-index 0 with the content raised above it,
+   rather than as a background on the element itself, for one reason: a Section
+   already owns its `background-color`, and a component that fought it for the
+   background shorthand would be a second place that decides what colour a
+   ground is. This adds a drawing ON the ground and never replaces it.
+
+   `--field-ink` is set by the ground, so a dark band draws its grid in Chalk
+   and a light one in Sight Grey without either knowing which it is.
+   -------------------------------------------------------------------------- */
+
+.u-field {
+  position: relative;
+  isolation: isolate;
+  --field-ink: var(--color-sight-grey);
+}
+
+/* Dark grounds draw the drawing in light. Set by Section alongside its ink. */
+.u-field-inverse {
+  --field-ink: var(--color-chalk);
+}
+
+.u-field::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    /* The reference lines, heavier, every 192px. */
+    repeating-linear-gradient(
+      to right,
+      color-mix(in srgb, var(--field-ink) var(--field-major-alpha), transparent) 0 1px,
+      transparent 1px var(--field-major)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--field-ink) var(--field-major-alpha), transparent) 0 1px,
+      transparent 1px var(--field-major)
+    ),
+    /* The minor grid, every 48px. */
+    repeating-linear-gradient(
+      to right,
+      color-mix(in srgb, var(--field-ink) var(--field-minor-alpha), transparent) 0 1px,
+      transparent 1px var(--field-step)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--field-ink) var(--field-minor-alpha), transparent) 0 1px,
+      transparent 1px var(--field-step)
+    );
+}
+
+/* The field is a drawing, and a drawing at 4% is decoration in the exact sense
+   WCAG means. Anyone who has asked for more contrast wants the grid gone, not
+   emphasised — it can only ever compete with the type. */
+@media (prefers-contrast: more) {
+  .u-field::before {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .u-field::before {
+    display: none;
+  }
+}
+
+/* ============================================================================
+   THE PANE
+   ========================================================================= */
+
+/* --- .u-glaze / .u-glaze-flat -----------------------------------------------
+   The tint is stated once, in a custom property, so the two classes cannot
+   drift apart on the one value that is load-bearing for contrast.
+   -------------------------------------------------------------------------- */
+
+.u-glaze,
+.u-glaze-flat {
+  background-color: color-mix(
+    in srgb,
+    var(--glaze-pane, var(--color-chalk)) var(--glaze-tint),
+    transparent
+  );
+  border-radius: var(--radius-panel);
+}
+
+/* Dark register. Set on the pane, or inherited from a Section that declares its
+   own — see `groundGlaze` in Section.tsx. */
+.u-glaze-dark {
+  --glaze-pane: var(--color-charred-timber);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .u-glaze {
+    -webkit-backdrop-filter: blur(var(--glaze-blur)) saturate(var(--glaze-saturate));
+    backdrop-filter: blur(var(--glaze-blur)) saturate(var(--glaze-saturate));
+  }
+}
+
+/* --- .u-glaze-edge ----------------------------------------------------------
+   Light from above-left. One inset shadow does all four edges: the first pair
+   lights the top and left, the second shades the bottom and right.
+
+   Inset rather than a border, so the pane's box does not grow and a grid of
+   panes stays on the 8px rhythm. The hairline frame is a real border because it
+   must survive forced-colors, where shadows are dropped entirely.
+   -------------------------------------------------------------------------- */
+
+.u-glaze-edge {
+  border: 1px solid
+    color-mix(in srgb, var(--color-sight-grey) var(--glaze-frame), transparent);
+  box-shadow:
+    inset 1px 1px 0 color-mix(in srgb, var(--color-chalk) var(--glaze-lit), transparent),
+    inset -1px -1px 0
+      color-mix(in srgb, var(--color-reticle-black) var(--glaze-shade), transparent);
+}
+
+/* On a dark pane the lit edge is the pane's own light, not Chalk at 62% — which
+   would read as a white keyline drawn around a dark card. Chalk at 18% over
+   Charred Timber is the same gesture at the same apparent strength. */
+.u-glaze-dark.u-glaze-edge {
+  border-color: color-mix(in srgb, var(--color-gabion-stone) 30%, transparent);
+  box-shadow:
+    inset 1px 1px 0 color-mix(in srgb, var(--color-chalk) 18%, transparent),
+    inset -1px -1px 0 color-mix(in srgb, #000 18%, transparent);
+}
+
+/* --- .u-glaze-raise ---------------------------------------------------------
+   A pane that can be picked up.
+
+   The lift is 1px and the shadow is tight and low-alpha, which is the same
+   restraint `.u-glass-lens` already exercises. §6 asks for motion that "feels
+   like precision equipment, not a promo video" — a card that jumps 4px and
+   grows a 24px shadow is the promo video.
+   -------------------------------------------------------------------------- */
+
+.u-glaze-raise {
+  transition:
+    transform var(--duration-fast) var(--ease-precision),
+    box-shadow var(--duration-fast) var(--ease-precision),
+    background-color var(--duration-fast) var(--ease-precision);
+}
+
+.u-glaze-raise:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 1px 1px 0 color-mix(in srgb, var(--color-chalk) var(--glaze-lit), transparent),
+    inset -1px -1px 0
+      color-mix(in srgb, var(--color-reticle-black) var(--glaze-shade), transparent),
+    0 2px 6px color-mix(in srgb, var(--color-reticle-black) 10%, transparent);
+}
+
+/* A raise is a pointer affordance. On a touch screen there is no hover state to
+   speak of, and `:hover` sticks after a tap on most mobile browsers — leaving
+   the last card the member touched permanently lifted. */
+@media (hover: none) {
+  .u-glaze-raise:hover {
+    transform: none;
+  }
+}
+
+/* ============================================================================
+   THE TICKS — Brand Guidelines §8, at a panel's corners
+   ========================================================================= */
+
+/* --- .u-tick ----------------------------------------------------------------
+   Setting-out marks at the corners of a pane.
+
+   The mark is a broken ring with ticks, and §8 makes its geometry the site's
+   graphic vocabulary — `.u-rule-segmented` already took the tick elements and
+   made a divider from them. This takes the same elements and does what a
+   surveyor does with them: marks the extents of the thing being set out.
+
+   Two corners rather than four. Four reads as a crop-mark frame and starts to
+   look like a certificate; two — top-left and bottom-right, following the same
+   light direction as the edge — reads as a registration mark, and is quieter at
+   the size these panels actually render.
+   -------------------------------------------------------------------------- */
+
+.u-tick {
+  position: relative;
+}
+
+.u-tick::before,
+.u-tick::after {
+  content: "";
+  position: absolute;
+  width: calc(var(--spacing) * 1.5); /* 12px */
+  height: calc(var(--spacing) * 1.5);
+  pointer-events: none;
+  border-color: color-mix(in srgb, var(--ink, currentColor) 40%, transparent);
+  border-style: solid;
+  border-width: 0;
+}
+
+.u-tick::before {
+  top: calc(var(--spacing) * 0.5);
+  left: calc(var(--spacing) * 0.5);
+  border-top-width: 1px;
+  border-left-width: 1px;
+}
+
+.u-tick::after {
+  right: calc(var(--spacing) * 0.5);
+  bottom: calc(var(--spacing) * 0.5);
+  border-right-width: 1px;
+  border-bottom-width: 1px;
+}
+
+/* ============================================================================
+   GUARDS — the material degrades, the reader does not.
+
+   Every one of these keeps the layout identical and removes only the
+   transparency, so nothing reflows when a preference changes. Same contract as
+   glass.css.
+   ========================================================================= */
+
+@media (prefers-reduced-transparency: reduce) {
+  .u-glaze,
+  .u-glaze-flat {
+    background-color: var(--glaze-pane, var(--color-chalk));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .u-glaze,
+  .u-glaze-flat {
+    background-color: var(--glaze-pane, var(--color-chalk));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  /* At higher contrast the frame does the work the tint was doing. */
+  .u-glaze-edge {
+    border-color: var(--color-sight-grey);
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   THE CALENDAR'S MARKS, UNDER FORCED COLOURS
+
+   Found by rendering it rather than by reasoning about it, which is the only
+   way this class of defect is ever found. In Windows High Contrast the whole
+   grid degraded correctly — field gone, pane on Canvas, rules and ticks in
+   CanvasText — and two things quietly stopped working:
+
+     1. THE SELECTED DAY LOST ITS SELECTION. `bg-[var(--ink)]` is a background
+        colour, and forced colours replaces every one of them, so the twentieth
+        became indistinguishable from the twenty-first. `aria-current` still
+        announced it; nobody looking at the screen could see it.
+
+     2. EVERY MARK VANISHED, legend included. The event square, the fixture
+        outline and the booked bar are all drawn with background-color or a
+        border colour, and all three were flattened to the same system value —
+        leaving a key with three labels and no glyphs beside them.
+
+   `forced-color-adjust: none` is the right tool here and is used narrowly. The
+   marks are 5px indicators whose ENTIRE meaning is their colour and shape, and
+   the palette they use was measured against black and white grounds already:
+   Ten Ring Red is 3.79:1 on Chalk and 3.70:1 on Charred Timber, so it survives
+   whichever end of the contrast scale the user's theme sits at. Text is never
+   opted out — only these glyphs.
+
+   The selected cell is done the other way, with system colours, because it IS a
+   selection and Highlight is what a selection is drawn with.
+   -------------------------------------------------------------------------- */
+
+@media (forced-colors: active) {
+  .u-mark {
+    forced-color-adjust: none;
+  }
+
+  .u-selected {
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
+}
+
+@media (forced-colors: active) {
+  .u-glaze,
+  .u-glaze-flat {
+    background-color: Canvas;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .u-glaze-edge,
+  .u-glaze-dark.u-glaze-edge {
+    border-color: CanvasText;
+    box-shadow: none;
+  }
+
+  .u-tick::before,
+  .u-tick::after {
+    border-color: CanvasText;
+  }
+}

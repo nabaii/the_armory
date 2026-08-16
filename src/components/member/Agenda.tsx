@@ -87,7 +87,7 @@ export function Agenda({
               <span className="block font-display text-h3 font-bold leading-none tabular-nums">
                 {dayOf(item)}
               </span>
-              <span className="u-kicker block text-[0.625rem] text-[var(--ink-muted)]">
+              <span className="u-micro block text-[var(--ink-muted)]">
                 {monthOf(item)}
               </span>
             </span>

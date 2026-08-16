@@ -15,6 +15,7 @@ import { clubOpeningHours } from "@/server/armory/club-policy";
 import { programmeWeek, publishedEvents } from "@/server/armory/programme";
 import type { ProgrammeDay } from "@/domain/programme";
 import { Section } from "@/components/layout/Section";
+import { Panel } from "@/components/ui/Panel";
 import { QuietAction } from "@/components/member/QuietAction";
 import { Body, Caption, H2, H3, Kicker } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
@@ -176,133 +177,172 @@ export default async function TodayPage() {
     : undefined;
 
   return (
-    <>
-      {/* ============================================================ 1 of 5
-          ACTION REQUIRED — §6.2. One component, in a loop, rendering whatever
-          the capability service hands back. Renders nothing when there is
-          nothing to say: a heading reading "nothing needs your attention" over
-          blank space is a club filling a screen with its own reassurance. */}
-      {remedies.length > 0 && (
-        <Section ground="chalk" rhythm="tight">
-          <Kicker className="mb-2">Needs you</Kicker>
-          <RemedyStack items={remedies} />
-        </Section>
-      )}
-
-      {/* ============================================================ 2 of 5
-          NEXT BOOKING. */}
-      <Section ground="chalk" rhythm="default">
-        <Kicker className="mb-2">Your next session</Kicker>
-        {next ? (
-          <NextBooking booking={next} now={now} />
-        ) : (
-          <>
-            <H2>Nothing booked.</H2>
-            <Body muted className="mt-2 max-w-[68ch]">
-              The club&rsquo;s week is below. When you know which evening suits,
-              book it — you can add whoever is coming with you at the same time.
-            </Body>
-            <Button href={routes.portalBookNew} variant="primary" className="mt-4">
-              Book a session
-            </Button>
-          </>
+    /**
+     * ONE BAND, FIVE PANES — and this is §6.1 read literally for the first time.
+     *
+     *   "A single vertical stack of cards. No tabs within tabs, no horizontal
+     *    carousels, no dashboard grid."
+     *
+     * This screen shipped as five full-bleed colour bands. Bands are the right
+     * structure for the marketing site, where each one is an argument, and they
+     * are not cards: every surface sat at the same distance from the reader, so
+     * nothing on Today could be picked up, compared, or told apart from the page
+     * it was printed on. A member scrolled through five paragraphs of club, not
+     * five things that were theirs.
+     *
+     * They are panes now, set into one setting-out field. The order is still
+     * fixed and still not computed — §6.3 — and the stack is still flat. What
+     * changed is that the five things Today has to say are now five objects.
+     *
+     * ===========================================================================
+     * THE SOFFIT BLUE BAND ON CARD 3 IS GONE, DELIBERATELY
+     *
+     * It cannot carry a pane: light glazing over Soffit Blue puts Ten Ring Red at
+     * 2.78:1, under the 3:1 a marker needs, and leaves captions at 4.57:1 with
+     * no headroom at all. See `groundGlaze`.
+     *
+     * It should not have carried one anyway. Guidelines §4 makes Soffit Blue the
+     * OPEN register and VIP Teal the member one — the registers encode which
+     * CONTEXT a reader is in, first visit against membership. Today is entirely
+     * one context. Using the open register to distinguish one of a member's own
+     * cards from another of a member's own cards was reading a rule about access
+     * as a rule about variety, which is how a colour system stops meaning
+     * anything. The member register is carried where it belongs: the tier chip in
+     * the header, and the teal band the Diary uses to say you are coming in.
+     */
+    <Section ground="terrazzo" rhythm="tight" field>
+      <div className="flex flex-col gap-3">
+        {/* ============================================================ 1 of 5
+            ACTION REQUIRED — §6.2. One component, in a loop, rendering whatever
+            the capability service hands back. Renders nothing when there is
+            nothing to say: a heading reading "nothing needs your attention" over
+            blank space is a club filling a screen with its own reassurance. */}
+        {remedies.length > 0 && (
+          <Panel>
+            <Kicker className="mb-2">Needs you</Kicker>
+            <RemedyStack items={remedies} />
+          </Panel>
         )}
 
-        {/* §10's second placement. Suggestive, and attached to a specific
-            booking rather than to the member — "never repeated for the same
-            booking" is a property of the prompt, so it names the session. */}
-        {toHost && (
-          <div className="mt-6 border-t border-[var(--rule)]/30 pt-3">
-            <H3>Bringing anyone on {formatWeekdayDate(toHost.slotStart)}?</H3>
-            <Body muted className="mt-1">
-              You have {armory.allowance.remaining}{" "}
-              {armory.allowance.remaining === 1 ? "guest visit" : "guest visits"}{" "}
-              included. Add them now and they get their own link.
-            </Body>
-            <QuietAction href={routes.portalBook}>
-            Add a guest
-          </QuietAction>
-          </div>
+        {/* ============================================================ 2 of 5
+            NEXT BOOKING. The one pane on this screen that carries the
+            setting-out ticks: it is the thing the member opened the app for,
+            and a mark on every pane is a border treatment rather than a mark. */}
+        <Panel ticks>
+          <Kicker className="mb-2">Your next session</Kicker>
+          {next ? (
+            <NextBooking booking={next} now={now} />
+          ) : (
+            <>
+              <H2>Nothing booked.</H2>
+              <Body muted className="mt-2 max-w-[68ch]">
+                The club&rsquo;s week is below. When you know which evening
+                suits, book it — you can add whoever is coming with you at the
+                same time.
+              </Body>
+              <Button href={routes.portalBookNew} variant="primary" className="mt-4">
+                Book a session
+              </Button>
+            </>
+          )}
+
+          {/* §10's second placement. Suggestive, and attached to a specific
+              booking rather than to the member — "never repeated for the same
+              booking" is a property of the prompt, so it names the session. */}
+          {toHost && (
+            <div className="mt-6 border-t border-[var(--rule)]/30 pt-3">
+              <H3>Bringing anyone on {formatWeekdayDate(toHost.slotStart)}?</H3>
+              <Body muted className="mt-1">
+                You have {armory.allowance.remaining}{" "}
+                {armory.allowance.remaining === 1 ? "guest visit" : "guest visits"}{" "}
+                included. Add them now and they get their own link.
+              </Body>
+              <QuietAction href={routes.portalBook}>Add a guest</QuietAction>
+            </div>
+          )}
+        </Panel>
+
+        {/* ============================================================ 3 of 5
+            TONIGHT AT THE CLUB — §6.4: this card has NO empty state. Where
+            nothing is on tonight it shows the week ahead, because a blank Today
+            teaches the member not to open the application. */}
+        <Panel>
+          <Kicker className="mb-2">At the club</Kicker>
+
+          {/*
+            The rail comes FIRST, above whatever the card has to say about
+            tonight. §6.4's requirement is that a member with nothing booked
+            still sees the club's week, and the sentence below answers that in
+            prose — which a member reads, and cannot scan. Seven marked cells
+            answer "is Saturday worth coming to" without reading, and each is a
+            way into the Diary on that day.
+
+            It does not select. Today has exactly one day in it, and a rail that
+            changed the card beneath it would be a small Diary embedded in
+            Today — the surface §7.1 spends a paragraph keeping separate.
+          */}
+          <WeekRail days={rail} className="mb-4" />
+
+          <TonightOrTheWeek today={today} week={week} />
+        </Panel>
+
+        {/* ============================================================ 4 of 5
+            COMPETITION. §15 holds LIVE standings for Phase 1.5 — this is the
+            commitment rather than the scoreboard, which is the right half to
+            ship first: "the engine is not the leaderboard, it is social
+            obligation. People return because they told a friend they would be
+            there." */}
+        {record.leagues.length > 0 && (
+          <Panel>
+            <Kicker className="mb-2">Your leagues</Kicker>
+            <ul className="flex flex-col gap-3">
+              {record.leagues.map((league) => (
+                <li
+                  key={league.id}
+                  className="border-t border-[var(--rule)]/30 pt-3 first:border-t-0 first:pt-0"
+                >
+                  <H3>
+                    <Link
+                      href={routes.league(league.id)}
+                      className="no-underline hover:underline"
+                    >
+                      {league.name}
+                    </Link>
+                  </H3>
+                  <Body muted className="mt-1">
+                    {league.nextFixtureLabel
+                      ? `${league.nextFixtureLabel} — still to shoot. Most play ${league.anchorWeekdayName}.`
+                      : `Season complete — all ${league.seasonWeeks} weeks are in.`}
+                  </Body>
+                </li>
+              ))}
+            </ul>
+          </Panel>
         )}
-      </Section>
 
-      {/* ============================================================ 3 of 5
-          TONIGHT AT THE CLUB — §6.4: this card has NO empty state. Where
-          nothing is on tonight it shows the week ahead, because a blank Today
-          teaches the member not to open the application. */}
-      <Section ground="soffit" rhythm="default">
-        <Kicker className="mb-2">At the club</Kicker>
-
-        {/*
-          The rail comes FIRST, above whatever the card has to say about
-          tonight. §6.4's requirement is that a member with nothing booked still
-          sees the club's week, and the sentence below answers that in prose —
-          which a member reads, and cannot scan. Seven marked cells answer "is
-          Saturday worth coming to" without reading, and each is a way into the
-          Diary on that day.
-
-          It does not select. Today has exactly one day in it, and a rail that
-          changed the card beneath it would be a small Diary embedded in Today —
-          the surface §7.1 spends a paragraph keeping separate.
-        */}
-        <WeekRail days={rail} className="mb-4" />
-
-        <TonightOrTheWeek today={today} week={week} />
-      </Section>
-
-      {/* ============================================================ 4 of 5
-          COMPETITION. §15 holds LIVE standings for Phase 1.5 — this is the
-          commitment rather than the scoreboard, which is the right half to
-          ship first: "the engine is not the leaderboard, it is social
-          obligation. People return because they told a friend they would be
-          there." */}
-      {record.leagues.length > 0 && (
-        <Section ground="chalk" rhythm="default">
-          <Kicker className="mb-2">Your leagues</Kicker>
-          <ul className="flex flex-col gap-3">
-            {record.leagues.map((league) => (
-              <li key={league.id} className="border-t border-[var(--rule)]/30 pt-3">
-                <H3>
-                  <Link
-                    href={routes.league(league.id)}
-                    className="no-underline hover:underline"
-                  >
-                    {league.name}
-                  </Link>
-                </H3>
-                <Body muted className="mt-1">
-                  {league.nextFixtureLabel
-                    ? `${league.nextFixtureLabel} — still to shoot. Most play ${league.anchorWeekdayName}.`
-                    : `Season complete — all ${league.seasonWeeks} weeks are in.`}
-                </Body>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
-
-      {/* ============================================================ 5 of 5
-          LAST ROUND. */}
-      {lastRound && (
-        <Section ground="chalk" rhythm="default">
-          <Kicker className="mb-2">Your last round</Kicker>
-          <ScoreLine
-            score={{
-              reads: lastRound.reads,
-              discipline: lastRound.discipline,
-              formatLabel: lastRound.formatLabel,
-              capturedAt: lastRound.capturedAt,
-              relation: bestForFormat?.trend ?? null,
-              isPersonalBest: bestForFormat?.reads === lastRound.reads,
-              superseded: lastRound.superseded,
-            }}
-          />
-          <QuietAction href={routes.portalShooting}>
-            Your whole record
-          </QuietAction>
-        </Section>
-      )}
-    </>
+        {/* ============================================================ 5 of 5
+            LAST ROUND. */}
+        {lastRound && (
+          <Panel>
+            <Kicker className="mb-2">Your last round</Kicker>
+            <ScoreLine
+              score={{
+                reads: lastRound.reads,
+                discipline: lastRound.discipline,
+                formatLabel: lastRound.formatLabel,
+                capturedAt: lastRound.capturedAt,
+                relation: bestForFormat?.trend ?? null,
+                isPersonalBest: bestForFormat?.reads === lastRound.reads,
+                superseded: lastRound.superseded,
+              }}
+            />
+            <QuietAction href={routes.portalShooting}>
+              Your whole record
+            </QuietAction>
+          </Panel>
+        )}
+      </div>
+    </Section>
   );
 }
 

@@ -119,7 +119,7 @@ export function WeekRail({
             >
               <span
                 aria-hidden="true"
-                className="u-kicker text-[0.625rem] leading-none"
+                className="u-micro leading-none"
               >
                 {WEEKDAY_INITIALS[columnOf(day.weekday)]}
               </span>

@@ -61,42 +61,64 @@ export type Ground =
    it returns as the centre-dot marker instead, which is its role in §8 anyway.
    ------------------------------------------------------------------------- */
 
-const GROUNDS: Record<Ground, { classes: string; singleInk: boolean }> = {
+const GROUNDS: Record<
+  Ground,
+  {
+    classes: string;
+    singleInk: boolean;
+    /**
+     * Whether this ground carries LIGHT type.
+     *
+     * Two things read it, and neither could infer it from the classes: the
+     * setting-out field, which must draw itself in Chalk on a dark band and in
+     * Sight Grey on a light one, and `groundGlaze`, which decides the register
+     * of any pane set into the band. Stated once here rather than derived twice
+     * from a string.
+     */
+    dark: boolean;
+  }
+> = {
   /** Default page ground. The white render of the buildings. */
   chalk: {
     classes:
       "bg-chalk text-reticle-black [--ink:var(--color-reticle-black)] [--ink-muted:var(--color-sight-ink)] [--rule:var(--color-sight-grey)] [--btn-fill:var(--color-ten-ring-deep)] [--btn-fill-ink:#fff]",
     singleInk: false,
+    dark: false,
   },
   /** The signature surface of the building. Section grounds, cards, panels. */
   terrazzo: {
     classes:
       "bg-terrazzo text-reticle-black [--ink:var(--color-reticle-black)] [--ink-muted:var(--color-sight-ink)] [--rule:var(--color-sight-grey)] [--btn-fill:var(--color-ten-ring-deep)] [--btn-fill-ink:#fff]",
     singleInk: false,
+    dark: false,
   },
   /** Ribbed cladding. Dark sections, footers, the night register. */
   charred: {
     classes:
       "bg-charred-timber text-chalk [--ink:var(--color-chalk)] [--ink-muted:var(--color-terrazzo)] [--rule:var(--color-gabion-stone)] [--btn-fill:var(--color-chalk)] [--btn-fill-ink:var(--color-reticle-black)]",
     singleInk: false,
+    dark: true,
   },
   /** Firing-line counters and lattice. The strongest anti-tactical signal. */
   teak: {
     classes:
       "bg-range-teak text-chalk [--ink:var(--color-chalk)] [--ink-muted:var(--color-chalk)] [--rule:var(--color-deck-oak)] [--btn-fill:var(--color-chalk)] [--btn-fill-ink:var(--color-reticle-black)]",
     singleInk: true,
+    dark: true,
   },
   /** MEMBER register. Deeper and more private — it should feel earned. */
   teal: {
     classes:
       "bg-vip-teal text-chalk [--ink:var(--color-chalk)] [--ink-muted:var(--color-chalk)] [--rule:var(--color-soffit-blue)] [--btn-fill:var(--color-chalk)] [--btn-fill-ink:var(--color-reticle-black)]",
     singleInk: true,
+    dark: true,
   },
   /** OPEN register. Calm, hospitable. First visit, snack bar, groups. */
   soffit: {
     classes:
       "bg-soffit-blue text-reticle-black [--ink:var(--color-reticle-black)] [--ink-muted:var(--color-reticle-black)] [--rule:var(--color-reticle-black)] [--btn-fill:var(--color-reticle-black)] [--btn-fill-ink:var(--color-chalk)]",
     singleInk: true,
+    dark: false,
   },
 };
 
@@ -116,6 +138,7 @@ export function Section({
   ground = "chalk",
   rhythm = "default",
   bleed = false,
+  field = false,
   className,
   id,
   "aria-labelledby": ariaLabelledBy,
@@ -125,6 +148,26 @@ export function Section({
   rhythm?: keyof typeof RHYTHM;
   /** Skip the Container — for full-bleed photography. */
   bleed?: boolean;
+  /**
+   * Draw the setting-out field on this band — see `src/styles/glaze.css`.
+   *
+   * ===========================================================================
+   * OPT-IN, AND IT STAYS OPT-IN
+   *
+   * The field is what glazing is glass OVER. A pane on a flat band is a pane
+   * with nothing behind it, which is the version of this material that reads as
+   * a border treatment rather than as glass.
+   *
+   * It is not defaulted on for two reasons. Long-form prose bands do not want a
+   * drawing behind them at any density — the eye finds the ruling and the
+   * measure fights it. And a site where every band carries it has made the
+   * field the wallpaper rather than the ground, at which point it stops
+   * signalling anything about the bands that hold objects.
+   *
+   * So: bands that contain PANES get the field. Bands that contain sentences do
+   * not.
+   */
+  field?: boolean;
   className?: string;
   id?: string;
   "aria-labelledby"?: string;
@@ -136,7 +179,15 @@ export function Section({
       aria-labelledby={ariaLabelledBy}
       data-ground={ground}
       data-single-ink={g.singleInk || undefined}
-      className={cn(g.classes, RHYTHM[rhythm], className)}
+      className={cn(
+        g.classes,
+        RHYTHM[rhythm],
+        field && "u-field",
+        /* A dark band draws its own drawing in light. The field never has to be
+           told which ground it is on, in the same way nothing else here is. */
+        field && g.dark && "u-field-inverse",
+        className,
+      )}
     >
       {bleed ? children : <Container>{children}</Container>}
     </section>
@@ -146,6 +197,46 @@ export function Section({
 /** Exposed for the /brand reference page. */
 export const groundNames = Object.keys(GROUNDS) as Ground[];
 export const isSingleInk = (g: Ground) => GROUNDS[g].singleInk;
+
+/**
+ * Which register a pane set into this ground must take — or null, where the
+ * ground cannot carry one at all.
+ *
+ * ===========================================================================
+ * THIS IS NOT A FREE CHOICE, AND SOFFIT BLUE IS THE PROOF
+ *
+ * `glaze.css` measured why register follows the band: a Chalk pane on a Charred
+ * Timber band puts Ten Ring Red at 2.45:1, and recovering it takes a 92% tint,
+ * at which point it is a Chalk rectangle with an expensive filter behind it.
+ *
+ * Soffit Blue then turns out to be neither. It is a LIGHT ground — it carries
+ * Reticle Black at 5.64:1 — so the light pane is the one that looks right, and
+ * the light pane over it measures:
+ *
+ *     Reticle Black  9.63:1   passes
+ *     Sight Ink      4.57:1   passes, by 0.07
+ *     Ten Ring Red   2.78:1   FAILS a non-text indicator
+ *
+ * Red is the outright failure and settles it: the centre dot is the app's
+ * active marker and it cannot be seen on that pane. The caption figure decides
+ * nothing on its own and is worth stating anyway — 4.57:1 is a pass with no
+ * headroom, on the smallest type the product sets, for a membership in the
+ * years when contrast sensitivity goes. Every other glazed ground clears it by
+ * a full point.
+ *
+ * A dark pane over it is worse-looking and no better founded. So Soffit Blue
+ * carries no glazing, and it returns null rather than the nearest guess — this
+ * is the same treatment `emptyReason` gives a value the club has not set, for
+ * the same reason: a plausible-looking default is how a contrast failure ships.
+ *
+ * A band that needs to hold panes and wants a light register uses Terrazzo,
+ * which is the building's own signature surface and measures Sight Ink at
+ * 5.50:1 and red at 3.35:1 under the same pane.
+ */
+export const groundGlaze = (ground: Ground): "light" | "dark" | null => {
+  if (ground === "soffit") return null;
+  return GROUNDS[ground].dark ? "dark" : "light";
+};
 
 /**
  * A ground's colour contract, for a panel nested inside a different one.

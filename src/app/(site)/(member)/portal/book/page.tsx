@@ -29,6 +29,7 @@ import {
 } from "@/domain/calendar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Section } from "@/components/layout/Section";
+import { Panel } from "@/components/ui/Panel";
 import { Body, H2, H3, Kicker } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { ProgrammeLine } from "@/components/member/ProgrammeLine";
@@ -286,14 +287,41 @@ export default async function DiaryPage({
 
       {/* ============================================================== 1 of 3
           THE CALENDAR. */}
-      <Section ground="chalk" rhythm="tight">
-        <MonthCalendar view={view} selectedKey={selectedKey} />
+      <Section ground="terrazzo" rhythm="tight" field>
+        {/* The month is the subject of this screen, so it is the one pane that
+            carries the setting-out ticks. `padded={false}` because the grid
+            manages its own rhythm — a pane's padding around a ruled grid would
+            put two different gutters either side of the same hairline. */}
+        <Panel
+          ticks
+          padded={false}
+          /* A month has seven columns and no reason to be 1800px wide. Left to
+             the container, a desktop cell grows to 250px and the numeral inside
+             it floats in the middle of a field of nothing — the grid stops
+             reading as a calendar and starts reading as a spreadsheet. Capped
+             at the width where a cell is about a thumb across, which is also
+             the width it has on the phone the club's members mostly use. */
+          className="max-w-[46rem] p-2 sm:p-3"
+        >
+          <MonthCalendar view={view} selectedKey={selectedKey} />
+        </Panel>
       </Section>
 
       {/* ============================================================== 2 of 3
           COMING UP — the same list on every month. See AGENDA_DAYS. */}
-      <Section ground="soffit" rhythm="tight">
+      {/* TERRAZZO, NOT SOFFIT BLUE — and the reason is measured rather than
+          aesthetic. A light pane over Soffit Blue puts Ten Ring Red at 2.78:1,
+          under the 3:1 a marker needs, and leaves captions at 4.57:1 with no
+          headroom, so that ground carries no panes at all (see `groundGlaze`). Terrazzo is the building's own signature
+          surface and measures 5.50:1 and 3.35:1 under the same pane.
+
+          It is the better ground here for a second reason: the agenda's every
+          line is a caption, and Soffit Blue is a single-ink ground that had been
+          flattening those to full ink. On a pane over a known backdrop the muted
+          ink comes back, so the list gets its two levels of hierarchy. */}
+      <Section ground="terrazzo" rhythm="tight" field>
         <Kicker className="mb-2">Coming up</Kicker>
+        <Panel>
         <Agenda
           items={agenda}
           hrefForDay={(dateKey) =>
@@ -301,24 +329,26 @@ export default async function DiaryPage({
           }
           emptyLine="Nothing out of the ordinary is published for the next few months. The club's opening hours are on the calendar above."
         />
+        </Panel>
       </Section>
 
       {/* ============================================================== 3 of 3
           THE DAY. */}
-      <Section ground="chalk" rhythm="tight">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <H2>{formatWeekdayDate(selected)}</H2>
-          <Button href={bookHref(selectedKey)} variant="primary">
-            Book this day
-          </Button>
-        </div>
+      <Section ground="terrazzo" rhythm="tight" field>
+        <Panel className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <H2>{formatWeekdayDate(selected)}</H2>
+            <Button href={bookHref(selectedKey)} variant="primary">
+              Book this day
+            </Button>
+          </div>
 
-        <ModeSwitch
-          className="mt-3"
-          mode={mode}
-          programmeHref={hrefFor({ mode: "programme" })}
-          availabilityHref={hrefFor({ mode: "availability" })}
-        />
+          <ModeSwitch
+            mode={mode}
+            programmeHref={hrefFor({ mode: "programme" })}
+            availabilityHref={hrefFor({ mode: "availability" })}
+          />
+        </Panel>
       </Section>
 
       {mode === "programme" ? (

@@ -122,7 +122,7 @@ export function MembersShell({ identity }: { identity: ShellIdentity }) {
                   "inline-flex items-center rounded-control px-1 py-[2px]",
                   /* Opaque, so its contrast holds over whatever scrolls
                      underneath the glass. Chalk on VIP Teal is 5.32:1. */
-                  "bg-vip-teal text-chalk u-kicker text-[0.625rem]",
+                  "bg-vip-teal text-chalk u-micro",
                 )}
               >
                 {identity.tierName}

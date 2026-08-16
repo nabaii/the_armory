@@ -86,11 +86,25 @@ p {
    FOCUS — spec §7 requires visible focus states throughout.
    Ten Ring Red is used as a *graphic* indicator (3:1 threshold), and it
    clears that on every ground in the palette: 3.79:1 on Chalk, 3.70:1 on
-   Charred Timber. The offset keeps it legible over photography too.
+   Charred Timber, 3.66:1 on light glazing, 3.47:1 on dark glazing. The offset
+   keeps it legible over photography too.
+
+   THREE PIXELS, NOT TWO, AND THE OFFSET IS WHY IT WORKS ON A RED BUTTON.
+
+   Two is the conventional minimum and this membership is not the conventional
+   audience: largely over 30, concentrated 35-50, which is where contrast
+   sensitivity starts to go. A keyboard user who cannot find the ring at a
+   glance is a keyboard user who has lost their place in the booking flow.
+
+   The offset is load-bearing rather than decorative. Ten Ring Red against the
+   Ten Ring Deep of a primary button measures 1.34:1 — a ring drawn ON the
+   button would be invisible. At a 2px offset it is drawn on the ground OUTSIDE
+   it instead, where it is the 3.79:1 it measures everywhere else. Do not remove
+   the offset to tighten a layout.
    ------------------------------------------------------------------------- */
 
 :focus-visible {
-  outline: 2px solid var(--color-ten-ring-red);
+  outline: 3px solid var(--color-ten-ring-red);
   outline-offset: 2px;
   border-radius: var(--radius-control);
 }
@@ -163,6 +177,29 @@ time,
 .u-kicker {
   font-family: var(--font-display);
   font-size: var(--text-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-kicker);
+  line-height: 1;
+}
+
+/* --- Micro label -----------------------------------------------------------
+   The kicker at the smallest size this product permits — 11px, rising to 12px
+   on a wide screen.
+
+   It exists to end a habit rather than to add a size. Column headings, rail
+   weekdays and the members' header had each reached for `u-kicker` plus an
+   inline `text-[0.625rem]`, which is 10px of tracked uppercase and below what
+   this membership reads comfortably in a hurry. Naming the floor is what stops
+   the next component inventing a smaller one.
+
+   Anything that wants to be quieter than this should be quieter by weight or by
+   colour, not by size. There is nothing below it.
+   -------------------------------------------------------------------------- */
+
+.u-micro {
+  font-family: var(--font-display);
+  font-size: var(--text-micro);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: var(--tracking-kicker);

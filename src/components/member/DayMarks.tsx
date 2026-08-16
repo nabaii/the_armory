@@ -57,7 +57,7 @@ export function MarkRow({
       {marks.event && (
         <span
           className={cn(
-            "size-[5px]",
+            "u-mark u-mark-event size-[5px]",
             /* Ten Ring Red measures 3.31:1 against Reticle Black, which clears
                the 3:1 a non-text indicator needs — so the filled square keeps
                its own colour on a selected cell rather than becoming a second
@@ -69,7 +69,7 @@ export function MarkRow({
       {marks.fixture && (
         <span
           className={cn(
-            "size-[5px] border",
+            "u-mark u-mark-fixture size-[5px] border",
             inverted ? "border-[var(--btn-fill-ink)]" : "border-[var(--ink)]",
           )}
         />
@@ -99,7 +99,7 @@ export function BookedBar({ inverted }: { inverted: boolean }) {
     <span
       aria-hidden="true"
       className={cn(
-        "absolute inset-y-[5px] left-[3px] w-[3px]",
+        "u-mark u-mark-booked absolute inset-y-[5px] left-[3px] w-[3px]",
         /* VIP Teal measures 2.40:1 against the selected cell's ink fill and
            fails the 3:1 a non-text indicator needs, so an inked cell inverts it
            rather than shipping a mark that cannot be seen. */
@@ -115,7 +115,7 @@ export function TodayDot({ inverted }: { inverted: boolean }) {
     <span
       aria-hidden="true"
       className={cn(
-        "absolute inset-x-0 bottom-[3px] mx-auto size-[4px] rounded-full",
+        "u-mark u-mark-today absolute inset-x-0 bottom-[3px] mx-auto size-[4px] rounded-full",
         inverted ? "bg-[var(--btn-fill-ink)]" : "bg-ten-ring-red",
       )}
     />
@@ -180,15 +180,15 @@ export function MarkLegend({ className }: { className?: string }) {
   return (
     <ul className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", className)}>
       <li className="flex items-center gap-1">
-        <span aria-hidden="true" className="size-[5px] bg-ten-ring-red" />
+        <span aria-hidden="true" className="u-mark u-mark-event size-[5px] bg-ten-ring-red" />
         <Caption as="span">Something on</Caption>
       </li>
       <li className="flex items-center gap-1">
-        <span aria-hidden="true" className="size-[5px] border border-[var(--ink)]" />
+        <span aria-hidden="true" className="u-mark u-mark-fixture size-[5px] border border-[var(--ink)]" />
         <Caption as="span">League round</Caption>
       </li>
       <li className="flex items-center gap-1">
-        <span aria-hidden="true" className="h-[10px] w-[3px] bg-vip-teal" />
+        <span aria-hidden="true" className="u-mark u-mark-booked h-[10px] w-[3px] bg-vip-teal" />
         <Caption as="span">You are coming in</Caption>
       </li>
     </ul>

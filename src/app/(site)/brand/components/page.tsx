@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Section } from "@/components/layout/Section";
+import { Panel } from "@/components/ui/Panel";
 import { Body, Caption, H1, H2, Kicker, Lead } from "@/components/ui/Text";
 import { Hero } from "@/components/sections/Hero";
 import { StatementBlock, Proposition } from "@/components/sections/StatementBlock";
@@ -435,8 +436,10 @@ export default function ComponentsPage() {
         name="MonthCalendar"
         note="The Diary's month. The club is open most days, so the operating rhythm is carried by the legibility of the numeral rather than by a glyph — a mark on every one of thirty-one cells carries no information. The glyphs are reserved for the exceptional days a member is scanning for: a filled square is something on, a hollow one a league round, a teal edge the member's own booking, a struck numeral a closure. Arrow keys move between days; the arrows travel three months and stop, because beyond that the club has decided nothing."
       />
-      <Section ground="chalk">
-        <MonthCalendar view={referenceMonth()} selectedKey="2026-08-20" />
+      <Section ground="terrazzo" field>
+        <Panel ticks padded={false} className="max-w-[46rem] p-2 sm:p-3">
+          <MonthCalendar view={referenceMonth()} selectedKey="2026-08-20" />
+        </Panel>
       </Section>
 
       <Ref
@@ -453,12 +456,14 @@ export default function ComponentsPage() {
         name="Agenda"
         note="What a grid cannot answer. The month shows a member WHERE things are; this shows WHAT they are, in order, across the whole horizon rather than the month on screen. The operating rhythm is excluded — ninety days of Range open is the opening hours printed ninety times, not an agenda — which is also why an empty list here is the honest signal that nobody is writing to the events table."
       />
-      <Section ground="chalk">
+      <Section ground="terrazzo" field>
+        <Panel>
         <Agenda
           items={referenceAgenda()}
           hrefForDay={() => routes.portalBook}
           emptyLine="Nothing out of the ordinary is published for the next few months."
         />
+        </Panel>
       </Section>
 
       <Ref
@@ -466,7 +471,8 @@ export default function ComponentsPage() {
         name="SlotBoard"
         note="Availability for one day, grouped morning / afternoon / evening — people do not hold a day as a list of times, and thirty identical chips in four wrapping rows is scanned by counting along a row. A full slot is rendered rather than filtered out (§6.2): a Saturday that vanishes because it is busy reads as the club being closed. The bar is a scanning aid and never the only statement — a bar cannot tell two places from three, which is the difference a member bringing a guest is reading for."
       />
-      <Section ground="chalk">
+      <Section ground="terrazzo" field>
+        <Panel>
         <SlotBoard
           title="A table"
           slots={referenceSlots()}
@@ -481,6 +487,7 @@ export default function ComponentsPage() {
             hrefFor={() => routes.portalBookNew}
           />
         </div>
+        </Panel>
       </Section>
     </>
   );

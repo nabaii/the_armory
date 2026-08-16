@@ -40,13 +40,30 @@ import { GATED_PRICE, type Tier } from "@/lib/content";
    no muted secondary text; it differentiates by weight and size instead.
    ========================================================================= */
 
+/**
+ * The three columns, and the lit edge they now all carry.
+ *
+ * A tier card is the definitive "something you could pick up" — three of them
+ * side by side exist to be compared, which is the one job a flat rectangle on a
+ * flat band does badly. `u-glaze-edge` gives each column the same lit top-left
+ * and shaded bottom-right the rest of the application's panes have, so they
+ * read as three physical cards rather than as three fills.
+ *
+ * They are NOT panes: these keep their opaque grounds. The teal column is a
+ * single-ink ground carrying the club's most consequential price, and the two
+ * neutral columns are Terrazzo on a Chalk band — darker than what is behind
+ * them, which is the one arrangement glazing cannot express. The edge is the
+ * part of the material that works at any tint, which is exactly why glaze.css
+ * keeps it separable from the pane.
+ */
 const REGISTER: Record<Tier["register"], string> = {
   neutral:
-    "bg-terrazzo [--ink:var(--color-reticle-black)] [--ink-muted:var(--color-sight-ink)] [--rule:var(--color-sight-grey)] [--btn-fill:var(--color-ten-ring-deep)] [--btn-fill-ink:#fff]",
+    "u-glaze-edge bg-terrazzo [--ink:var(--color-reticle-black)] [--ink-muted:var(--color-sight-ink)] [--rule:var(--color-sight-grey)] [--btn-fill:var(--color-ten-ring-deep)] [--btn-fill-ink:#fff]",
   member:
-    "bg-terrazzo [--ink:var(--color-reticle-black)] [--ink-muted:var(--color-sight-ink)] [--rule:var(--color-sight-grey)] [--btn-fill:var(--color-ten-ring-deep)] [--btn-fill-ink:#fff]",
-  /* Single-ink ground: --ink-muted intentionally equals --ink. */
-  vip: "bg-vip-teal [--ink:var(--color-chalk)] [--ink-muted:var(--color-chalk)] [--rule:var(--color-soffit-blue)] [--btn-fill:var(--color-chalk)] [--btn-fill-ink:var(--color-reticle-black)]",
+    "u-glaze-edge bg-terrazzo [--ink:var(--color-reticle-black)] [--ink-muted:var(--color-sight-ink)] [--rule:var(--color-sight-grey)] [--btn-fill:var(--color-ten-ring-deep)] [--btn-fill-ink:#fff]",
+  /* Single-ink ground: --ink-muted intentionally equals --ink. The dark edge,
+     because a Chalk highlight at 62% around a teal card is a white keyline. */
+  vip: "u-glaze-edge u-glaze-dark bg-vip-teal [--ink:var(--color-chalk)] [--ink-muted:var(--color-chalk)] [--rule:var(--color-soffit-blue)] [--btn-fill:var(--color-chalk)] [--btn-fill-ink:var(--color-reticle-black)]",
 };
 
 export function TierComparison({

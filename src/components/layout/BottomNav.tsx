@@ -202,8 +202,22 @@ function Tab({ item, active }: { item: AppNavItem; active: boolean }) {
                  set, and at 11px they left roughly 4px of clearance inside a
                  64px cell at 320px — technically fitting, visually jammed.
                  10px is also what iOS and Android use for a tab label, so it
-                 is the size the audience already reads at this position. */
-              "text-[0.625rem] tracking-[0.06em]",
+                 is the size the audience already reads at this position.
+
+                 THAT MEASUREMENT WAS ABOUT 320px, AND IT IS NOW HELD THERE
+                 RATHER THAN EVERYWHERE. This membership is largely over 30 and
+                 concentrated 35-50, where 10px of tracked uppercase is at the
+                 edge of comfortable — and almost nobody is on a 320px phone.
+                 A 390px iPhone and a 412px Android both have room the original
+                 measurement never claimed they did not.
+
+                 So the label is fluid instead of fixed: 10px where the width
+                 genuinely forces it, ~11px on the phones the club's members
+                 actually carry, 12px by 480px. The jammed case is still
+                 avoided; it is simply no longer imposed on everyone. This is
+                 the one label on the site allowed below --text-micro's floor,
+                 and only at the bottom of its range. */
+              "text-[clamp(0.625rem,0.375rem+1.25vw,0.75rem)] tracking-[0.06em]",
               active ? "font-bold" : "font-normal",
             )}
           >

@@ -14,7 +14,7 @@
  * missing copy there is no version of launch day where they become acceptable.
  */
 
-import { auditRequiredPairs } from "../src/lib/contrast";
+import { auditGlazedPairs, auditRequiredPairs } from "../src/lib/contrast";
 import { contentGate, gateSummary } from "../src/lib/content-gate";
 
 const launchMode = process.argv.includes("--launch");
@@ -40,6 +40,37 @@ for (const a of audit) {
   const ratio = `${a.ratio.toFixed(2)}:1`.padStart(7);
   if (a.pass) {
     console.log(`  ${green("PASS")}  ${pair}  ${ratio}  ${dim(a.role)}`);
+  } else {
+    failed = true;
+    console.log(
+      `  ${red("FAIL")}  ${pair}  ${ratio}  ` +
+        red(`needs ${a.threshold}:1 — ${a.role}`),
+    );
+  }
+}
+
+
+/* --------------------------------------------------------- GLAZING COMPOSITES
+
+   The panes are not palette colours; they are what a palette colour composites
+   to over a known ground. `auditGlazedPairs` computes them from the same tint
+   the stylesheet declares — and `src/lib/glaze.test.ts` asserts the stylesheet
+   still declares it, which is the half a gate cannot check on its own.
+   -------------------------------------------------------------------------- */
+
+console.log(`\n${bold("WCAG 2.1 AA — glazing, composited over each ground")}`);
+console.log(dim("  a pane at 62% over the setting-out field at its darkest\n"));
+
+const glazed = auditGlazedPairs();
+const glazedWidth = Math.max(
+  ...glazed.map((a) => `${a.fg} on a pane over ${a.ground}`.length),
+);
+
+for (const a of glazed) {
+  const pair = `${a.fg} on a pane over ${a.ground}`.padEnd(glazedWidth);
+  const ratio = `${a.ratio.toFixed(2)}:1`.padStart(7);
+  if (a.pass) {
+    console.log(`  ${green("PASS")}  ${pair}  ${ratio}  ${dim(a.surface)}`);
   } else {
     failed = true;
     console.log(

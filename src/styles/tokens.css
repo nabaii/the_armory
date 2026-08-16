@@ -161,8 +161,38 @@
   --text-body: clamp(1rem, 0.96875rem + 0.1042vw, 1.0625rem);
   --text-body--line-height: 1.65;
 
-  --text-caption: clamp(0.8125rem, 0.78125rem + 0.1042vw, 0.875rem);
+  /* --------------------------------------------------------------------------
+     CAPTION — raised from 13px to 14px at the small end. This is a legibility
+     change, not a taste one, and it is the single most consequential line in
+     this file.
+
+     The club's membership is largely over 30 and concentrated between 35 and
+     50. Presbyopia begins around 40 and contrast sensitivity declines with it,
+     and this token is not decorative metadata on this product — it carries
+     "3 places", "Streak 5 days", the times on the programme, the detail line
+     under every agenda entry. A member squinting at how many places are left is
+     the exact moment the portal loses to a WhatsApp message.
+
+     13px was inside the spec's own scale and was the wrong end of it for this
+     audience. 14 -> 15px costs a few pixels of vertical rhythm and buys the
+     smallest type on the product a full step of legibility.
+     ----------------------------------------------------------------------- */
+  --text-caption: clamp(0.875rem, 0.84375rem + 0.1042vw, 0.9375rem);
   --text-caption--line-height: 1.5;
+
+  /* --------------------------------------------------------------------------
+     MICRO — the floor, and the reason it exists.
+
+     Kicker labels had been set ad hoc at 0.625rem (10px) in the members' header,
+     the calendar's column headings and the week rail. Uppercase, at 120 units of
+     tracking, at 10px, is at the limit of what this audience reads comfortably
+     and below the limit of what they read in a hurry.
+
+     11px is the floor, rising to 12px on a wide screen. Anything that wants to
+     be smaller than this wants to be a different element.
+     ----------------------------------------------------------------------- */
+  --text-micro: clamp(0.6875rem, 0.65625rem + 0.1042vw, 0.75rem);
+  --text-micro--line-height: 1.2;
 
   --text-data: clamp(1rem, 0.96875rem + 0.1042vw, 1.0625rem);
   --text-data--line-height: 1.4;

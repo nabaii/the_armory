@@ -210,7 +210,7 @@ export function MonthCalendar({
               role="columnheader"
               className={cn(
                 "border-r border-b border-[var(--rule)]/25 py-1",
-                "u-kicker text-center text-[0.625rem] text-[var(--ink-muted)]",
+                "u-micro text-center text-[var(--ink-muted)]",
               )}
             >
               <span aria-hidden="true">{initial}</span>
@@ -289,7 +289,7 @@ function DayCell({
            mark whose consequence is a member NOT driving to the National
            Stadium, and it is worth more than a glyph. */
         cell.marks.closed && !selected && "bg-[var(--rule)]/12",
-        selected && "bg-[var(--ink)] text-[var(--btn-fill-ink)]",
+        selected && "u-selected bg-[var(--ink)] text-[var(--btn-fill-ink)]",
       )}
     >
       {!cell.href ? (

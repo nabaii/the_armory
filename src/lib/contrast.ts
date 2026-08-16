@@ -123,6 +123,109 @@ export const requiredPairs: Array<{
   { fg: "reticle-black", bg: "chalk", need: "graphic", role: "Calendar: a league round's outline, and the grid's rules" },
 ];
 
+/* ============================================================================
+   GLAZING — the composites, computed rather than pasted
+
+   `src/styles/glaze.css` puts content-grade glass over a known ground, and the
+   whole reason it is allowed to do so is that the resulting colour is
+   COMPUTABLE. Snapshotting the six results as hex literals would make the gate
+   agree with a stylesheet it had stopped reading; these are composited here
+   from the same three numbers the CSS uses, and `glaze.test.ts` asserts the CSS
+   still declares those numbers.
+   ========================================================================= */
+
+/** The pane's alpha. Mirrors `--glaze-tint` in glaze.css. */
+export const GLAZE_TINT = 0.62;
+
+/**
+ * The field's darkest permitted density. Mirrors the ceiling of
+ * `--field-major-alpha`, and the proof is written against it rather than
+ * against the value in use, so the figures keep headroom.
+ */
+export const FIELD_ALPHA_MAX = 0.08;
+
+/**
+ * Normal-blend alpha compositing in sRGB gamma space.
+ *
+ * The same method base.css uses for the hero scrim and glass.css for the
+ * chrome. Browsers do not composite in linear light, so neither does this — a
+ * "more correct" linear blend here would produce numbers the screen disagrees
+ * with, which is the only kind of wrong that matters.
+ */
+export function composite(fg: PaletteName, alpha: number, bg: string): string {
+  const f = channels(palette[fg]);
+  const b = channels(bg);
+  const mix = f.map((v, i) => Math.round(alpha * v + (1 - alpha) * b[i]));
+  return `#${mix.map((v) => v.toString(16).padStart(2, "0").toUpperCase()).join("")}`;
+}
+
+/** The three 0-255 channels of a six-digit hex colour. */
+const channels = (hex: string): number[] =>
+  [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+
+/** A band with the setting-out field drawn on it, at its darkest. */
+export const fieldOver = (ground: PaletteName): string =>
+  composite(
+    /* A dark band draws its drawing in light, a light one in Sight Grey — the
+       same rule `u-field-inverse` applies in CSS. */
+    DARK_GROUNDS.has(ground) ? "chalk" : "sight-grey",
+    FIELD_ALPHA_MAX,
+    palette[ground],
+  );
+
+const DARK_GROUNDS = new Set<PaletteName>([
+  "charred-timber",
+  "range-teak",
+  "vip-teal",
+]);
+
+/** A pane of glazing over a field over `ground`. */
+export const glazeOver = (ground: PaletteName): string =>
+  composite(
+    DARK_GROUNDS.has(ground) ? "charred-timber" : "chalk",
+    GLAZE_TINT,
+    fieldOver(ground),
+  );
+
+/**
+ * The pairs a pane has to hold, on every ground that carries one.
+ *
+ * Soffit Blue is absent on purpose: it carries no glazing, because a light pane
+ * over it puts Sight Ink at 4.48:1 and Ten Ring Red at 2.73:1. That decision is
+ * enforced by `groundGlaze` returning null, and stating it here as a required
+ * pair would assert the opposite.
+ */
+export const glazedPairs: Array<{
+  ground: PaletteName;
+  fg: PaletteName;
+  need: "body" | "graphic";
+  role: string;
+}> = [
+  { ground: "chalk", fg: "reticle-black", need: "body", role: "Pane body text on a Chalk band" },
+  { ground: "chalk", fg: "sight-ink", need: "body", role: "Pane captions on a Chalk band" },
+  { ground: "chalk", fg: "ten-ring-red", need: "graphic", role: "Pane markers on a Chalk band" },
+
+  { ground: "terrazzo", fg: "reticle-black", need: "body", role: "Pane body text on a Terrazzo band" },
+  { ground: "terrazzo", fg: "sight-ink", need: "body", role: "Pane captions on a Terrazzo band" },
+  { ground: "terrazzo", fg: "ten-ring-red", need: "graphic", role: "Pane markers on a Terrazzo band" },
+
+  { ground: "charred-timber", fg: "chalk", need: "body", role: "Dark pane body text on Charred Timber" },
+  { ground: "charred-timber", fg: "terrazzo", need: "body", role: "Dark pane captions on Charred Timber" },
+  { ground: "vip-teal", fg: "chalk", need: "body", role: "Dark pane body text on VIP Teal" },
+  { ground: "vip-teal", fg: "terrazzo", need: "body", role: "Dark pane captions on VIP Teal" },
+  { ground: "range-teak", fg: "chalk", need: "body", role: "Dark pane body text on Range Teak" },
+  { ground: "range-teak", fg: "terrazzo", need: "body", role: "Dark pane captions on Range Teak" },
+];
+
+export function auditGlazedPairs() {
+  return glazedPairs.map((pair) => {
+    const surface = glazeOver(pair.ground);
+    const ratio = round(contrast(palette[pair.fg], surface));
+    const threshold = pair.need === "body" ? 4.5 : 3;
+    return { ...pair, surface, ratio, threshold, pass: ratio >= threshold };
+  });
+}
+
 export function auditRequiredPairs() {
   return requiredPairs.map((pair) => {
     const ratio = round(contrast(palette[pair.fg], palette[pair.bg]));

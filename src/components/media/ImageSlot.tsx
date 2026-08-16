@@ -84,10 +84,26 @@ export function ImageSlot({
 
   if (!photo) {
     return (
+      /**
+       * THE RESERVED FRAME IS A SETTING-OUT DRAWING, NOT A GREY BOX.
+       *
+       * Photography is the critical path and it has not landed, so on today's
+       * site this frame is what a visitor actually sees — several times per
+       * page, at hero size on the homepage. A flat grey rectangle reading
+       * "reserved for commissioned photography" is honest and it makes a
+       * finished product look unfinished, which is a different claim from the
+       * one it is trying to make.
+       *
+       * The field says the same thing in the building's own language: this
+       * opening is SET OUT, dimensioned, and waiting for what goes in it. It is
+       * the drawing that precedes the photograph rather than a placeholder
+       * standing in for one — and §9's rule is untouched, because there is
+       * still no code path by which anything stands in for a room.
+       */
       <div
         className={cn(
           frame,
-          "grid place-items-center border border-sight-grey/40 p-3 text-center",
+          "u-field grid place-items-center border border-sight-grey/40 p-3 text-center",
         )}
         data-awaiting={awaiting}
       >

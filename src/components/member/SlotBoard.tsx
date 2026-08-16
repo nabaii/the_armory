@@ -105,7 +105,7 @@ export function SlotBoard({
         <div className="mt-2 flex flex-col gap-3">
           {grouped.map((part) => (
             <div key={part.key}>
-              <p className="u-kicker text-[0.625rem] text-[var(--ink-muted)]">
+              <p className="u-micro text-[var(--ink-muted)]">
                 {part.label}
               </p>
               <ul className="mt-1 flex flex-wrap gap-1">
@@ -158,8 +158,25 @@ function SlotChip({ slot, href }: { slot: Slot; href: string }) {
       aria-label={`${formatTime(slot.start)} — ${placesLabel(slot.free)} — book`}
       className={cn(
         "group relative inline-flex min-h-6 min-w-[4.5rem] flex-col justify-center",
-        "overflow-hidden rounded-control border border-[var(--ink)]",
-        "px-2 py-1 no-underline",
+        "overflow-hidden px-2 py-1 no-underline",
+        /**
+         * FLAT GLAZING, AND THE FLATNESS IS THE ENGINEERING DECISION.
+         *
+         * A bookable slot is the smallest thing on this product a member picks
+         * up, so it gets the material — but `.u-glaze-flat` rather than
+         * `.u-glaze`. A Diary day renders a table board plus three discipline
+         * boards of seven slots each; thirty `backdrop-filter` layers is a
+         * dropped frame per scroll on the mid-range Android §6.4's budget is
+         * measured against, and a 44px chip has no room to show a blurred
+         * drawing through itself anyway. It keeps the tint and the lit edge,
+         * which is the part that reads at this size.
+         *
+         * The border comes from the edge rather than from full `--ink`: the
+         * chip is one of thirty, and thirty full-ink rectangles is a grid of
+         * boxes rather than a row of choices. What marks it as available is now
+         * the lit edge and the fill behind it.
+         */
+        "u-glaze-flat u-glaze-edge u-glaze-raise rounded-control",
         "transition-colors duration-[var(--duration-fast)]",
         "ease-[var(--ease-precision)]",
         "hover:bg-[var(--ink)] hover:text-[var(--btn-fill-ink)]",
