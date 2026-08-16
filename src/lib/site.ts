@@ -102,8 +102,24 @@ export const routes = {
   signInVerify: "/sign-in/verify",
   /** The member home. Spec §1 calls Phase 2 "member accounts and portal". */
   portal: "/portal",
-  /** §6.2 "Book a session" and "Invite a guest", which are one intention. */
+  /**
+   * §6.2 "Book a session" and "Invite a guest", which are one intention.
+   *
+   * Members Portal §5 makes this DIARY — the club's week, in two modes. It kept
+   * its path rather than moving to /portal/diary: the route is already live,
+   * already linked from confirmation emails, and a members app that broke
+   * every saved link on the day it improved is a poor first impression of the
+   * improvement.
+   */
   portalBook: "/portal/book",
+  /**
+   * The booking flow — Members Portal §7.4. Five steps, as a ROUTE.
+   *
+   * "A route, not a modal sheet — deep-linkable, surviving refresh, giving the
+   *  red action a destination, and behaving correctly under React Server
+   *  Components."
+   */
+  portalBookNew: "/portal/book/new",
   /** §6.2 "My shooting" — history, personal best, trend. Standings are Phase 2. */
   portalShooting: "/portal/shooting",
   /** §6.2 "My documents" — waiver, licence, owned firearm registrations. */

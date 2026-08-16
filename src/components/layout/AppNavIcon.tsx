@@ -146,7 +146,7 @@ const GLYPHS: Record<AppNavIconName, React.ReactNode> = {
   ),
 
   /* ACCOUNT — the membership card, issued. The dot is the holder; the two
-     rules are the name and the standing, which is exactly what MemberBar
+     rules are the name and the standing, which is exactly what the members header
      renders in text one level up. */
   card: (
     <>

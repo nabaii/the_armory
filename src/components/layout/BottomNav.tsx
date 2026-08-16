@@ -4,7 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import { cn } from "@/lib/cn";
-import { guestNav, isAppNavActive, memberNav, type AppNavItem } from "@/lib/app-nav";
+import {
+  activePortalHref,
+  guestNav,
+  isAppNavActive,
+  isPortalRoute,
+  memberNav,
+  portalNav,
+  type AppNavItem,
+} from "@/lib/app-nav";
 import {
   getSessionHint,
   getSessionHintServerSnapshot,
@@ -64,7 +72,23 @@ export function BottomNav() {
     getSessionHintServerSnapshot,
   );
 
-  const items = signedIn ? memberNav : guestNav;
+  /**
+   * Inside the members app the bar is the members app's.
+   *
+   * Members Portal §4.2: the navigation changes from HOME · VISIT · RANGES ·
+   * CLUB · APPLY to TODAY · DIARY · COMPETE · ME · BOOK. This is where that
+   * happens, and it is switched on the PATH rather than on the session hint.
+   *
+   * That matters for one render: the hint resolves on the client, so the first
+   * paint of any page is the signed-out set. On a public page that is correct
+   * and invisible. On a portal page it would be a flash of the marketing nav
+   * under a member's thumb — five wrong destinations, one of which is Apply,
+   * shown to somebody who is already a member. The path is known on the server,
+   * so switching on it makes the members bar correct from the first byte.
+   */
+  const portal = isPortalRoute(pathname);
+  const items = portal ? portalNav : signedIn ? memberNav : guestNav;
+  const active = portal ? activePortalHref(pathname) : null;
 
   return (
     <nav
@@ -87,7 +111,12 @@ export function BottomNav() {
           <Tab
             key={item.href}
             item={item}
-            active={isAppNavActive(pathname, item.href)}
+            /* Longest prefix inside the portal — every route there begins with
+               /portal, so a subtree test would light Today on every screen and
+               would light both Diary and Book on /portal/book/new. */
+            active={
+              portal ? active === item.href : isAppNavActive(pathname, item.href)
+            }
           />
         ))}
       </ul>
