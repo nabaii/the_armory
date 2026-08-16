@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { getArmoryDb, isArmoryDatabaseConfigured } from "@/db/armory/client";
 import {
   availableSlots,
   availableTables,
   emptyReason,
   emptyTableReason,
+  type Slot,
 } from "@/domain/availability";
 import {
   bookedInWindow,
@@ -15,36 +15,69 @@ import {
 import { programmeWeek, publishedEvents } from "@/server/armory/programme";
 import { resolveArmoryMember } from "@/server/armory/member-session";
 import { upcomingBookingsFor } from "@/server/armory/member-bookings";
-import { hasProgramme, weekFrom, type ProgrammeDay } from "@/domain/programme";
+import { bookingHorizonBlock } from "@/domain/capability";
+import type { ProgrammeDay } from "@/domain/programme";
+import {
+  agendaFrom,
+  calendarMonth,
+  monthKeyOf,
+  monthLabel,
+  parseMonthKey,
+  withinHorizon,
+  HORIZON_MONTHS,
+  type MonthKey,
+} from "@/domain/calendar";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Section } from "@/components/layout/Section";
-import { Body, Caption, H2, H3, Kicker } from "@/components/ui/Text";
+import { Body, H2, H3, Kicker } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { ProgrammeLine } from "@/components/member/ProgrammeLine";
+import { Agenda } from "@/components/member/Agenda";
+import { SlotBoard } from "@/components/member/SlotBoard";
 import {
-  ModeSwitch,
-  WeekStrip,
-  type DiaryMode,
-  type WeekDay,
-} from "@/components/member/DiaryControls";
+  MonthCalendar,
+  type CalendarDay,
+  type CalendarView,
+} from "@/components/member/DiaryCalendar";
+import { ModeSwitch, type DiaryMode } from "@/components/member/DiaryControls";
 import {
   addDays,
   formatTime,
   formatWeekdayDate,
   lagosDateKey,
-  lagosParts,
+  lagosDaysBetween,
   parseDateColumn,
+  startOfLagosDay,
 } from "@/lib/time";
 import { routes } from "@/lib/site";
 
 /**
  * DIARY — Members Portal Design Specification §7.
  *
- *   "§7.1 — Today answers what am I doing. Diary answers what could I do.
- *    Today is a notification surface … It cannot show the shape of a month
- *    without becoming a scroll. A member deciding whether to come in on the
- *    twenty-seventh, or noticing a fixture three weeks out, needs a surface
- *    Today cannot be."
+ *   "§7.1 — Today answers what am I doing. Diary answers what could I do …
+ *    A member deciding whether to come in on the twenty-seventh, or noticing a
+ *    fixture three weeks out, needs a surface Today cannot be."
+ *
+ * ===========================================================================
+ * THE STRIP DID NOT ANSWER EITHER HALF OF THAT SENTENCE
+ *
+ * This tab shipped with a rolling seven-day strip. It is a good day picker and
+ * it is not a diary: the twenty-seventh was reachable only by tapping forward
+ * through the week one day at a time, and a fixture three weeks out was not
+ * visible at all — three screens of tapping away, which in practice means
+ * nobody finds it. A member planning a month could not see a month.
+ *
+ * The Diary is now a month, and the month travels. Three surfaces, in the order
+ * a member uses them:
+ *
+ *   1. THE CALENDAR   the shape of the month, and which days are worth a tap
+ *   2. COMING UP      what those days actually are, in a list, across the whole
+ *                     window rather than only the month on screen
+ *   3. THE DAY        what is on, or what is free, on the one day chosen
+ *
+ * The grid answers WHERE, the agenda answers WHAT, and the day panel answers
+ * the question that follows. None of the three is redundant and removing any
+ * one of them puts its question back on WhatsApp.
  *
  * ===========================================================================
  * §7.3 — THREE FEEDS, AND THAT IS WHY THIS TAB IS NOT EMPTY MOST WEEKS
@@ -54,47 +87,41 @@ import { routes } from "@/lib/site";
  *    The surface survives because it draws on three feeds of very different
  *    frequency."
  *
- * The operating rhythm — which evenings the club is open, which of them are
- * staffed — is the feed that carries it, and it costs nothing beyond the
- * opening-hours migration that booking needed anyway.
+ * A month makes that argument sharper rather than weaker. Thirty-one cells of
+ * operating rhythm is the club looking open, which is the whole point — and it
+ * is also why the rhythm is NOT what the agenda lists. See `agendaFrom`.
  *
  * ===========================================================================
- * §7.5 — THE DECISION THIS TAB SAT ON, NOW TAKEN
+ * WHY THE STATE IS IN THE URL — §13.2, and §7.4's argument moved one screen up
  *
- *   "If the club has a programme — a reason to be there on an evening you are
- *    not shooting, published in advance — Diary is the hospitality surface and
- *    it earns a tab. If the honest answer is *the range is open, come when you
- *    like*, then Diary is a date picker wearing a tab."
- *
- * SETTLED, 16 August 2026: the club has a programme. The Diary keeps its tab
- * and the four-tab structure stands.
- *
- * What that creates is an obligation rather than a feature. A tab promising a
- * programme has to have one in it: the operating rhythm fills it every day now
- * that the week is published, and the one-off feed is the club's to keep
- * current. An events table nobody writes to would make this tab emptier than no
- * tab would have been, which is the failure §7.3 warns about.
- *
- * ===========================================================================
- * WHY THE STATE IS IN THE URL
- *
- * §13.2 and §7.4's argument for the booking flow, applied here: a day and a
- * mode held in component state cannot be linked to, do not survive a refresh,
- * and lose the member's place when they follow a booking and come back. As
- * search parameters they are all three.
+ * A month, a day and a mode held in component state cannot be linked to, do not
+ * survive a refresh, and lose the member's place when they follow a booking and
+ * come back. As search parameters, "September, the fourth, availability" is a
+ * URL a member can send to somebody and the back button does what they expect.
  */
 
 export const metadata: Metadata = { title: "Diary" };
 
 export const dynamic = "force-dynamic";
 
-/** How far the strip and the grids project. Two weeks of the club's week. */
-const WINDOW_DAYS = 14;
+/**
+ * How far COMING UP looks, whichever month is on screen.
+ *
+ * Deliberately not the visible month. A member looking at October must still be
+ * told about the guest evening a week on Thursday — an agenda that reset every
+ * time the member paged the calendar would be a second, worse calendar. It is
+ * the same list on every month, and it is the club's next occasions.
+ */
+const AGENDA_DAYS = HORIZON_MONTHS * 31;
 
-/** How many days the strip itself shows at once. Seven fit a phone. */
-const STRIP_DAYS = 7;
+/** How many occasions the list carries before it becomes a scroll. */
+const AGENDA_LIMIT = 5;
 
-type Search = { readonly day?: string; readonly mode?: string };
+type Search = {
+  readonly day?: string;
+  readonly mode?: string;
+  readonly month?: string;
+};
 
 export default async function DiaryPage({
   searchParams,
@@ -124,54 +151,130 @@ export default async function DiaryPage({
 
   const db = getArmoryDb();
   const now = new Date();
-  const mode: DiaryMode = params.mode === "availability" ? "availability" : "programme";
+  const mode: DiaryMode =
+    params.mode === "availability" ? "availability" : "programme";
+
   const selected = selectedDay(params.day, now);
   const selectedKey = lagosDateKey(selected);
+  const monthKey = selectedMonth(params.month, selected, now);
 
-  const [policy, lanes, events, booked] = await Promise.all([
+  /**
+   * The grid is built twice, and the first one is thrown away.
+   *
+   * Its only job is to report the range it covers — a month grid reaches into
+   * the neighbouring months to fill its first and last rows, and how far
+   * depends on which weekday the first of the month falls on. Loading a fixed
+   * "month plus a week" would over-fetch on most months and under-fetch on the
+   * ones that start on a Sunday.
+   *
+   * A second pass through a pure function costs nothing measurable and it means
+   * the calendar never renders a day it did not load, which would show as a day
+   * with no marks on it — indistinguishable from a day with nothing on.
+   */
+  const shape = calendarMonth({ monthKey, today: now });
+
+  /* One window covering everything three surfaces need: the grid's range, and
+     the agenda's, which does not move when the member pages the calendar. */
+  const from = earlier(shape.from, startOfLagosDay(now));
+  const to = later(shape.to, addDays(startOfLagosDay(now), AGENDA_DAYS));
+
+  const [policy, events, bookings] = await Promise.all([
     clubAvailabilityPolicy(db),
-    clubLanes(db),
-    publishedEvents(db, { from: now, to: addDays(now, WINDOW_DAYS) }),
-    bookedInWindow(db, { from: now, to: addDays(now, WINDOW_DAYS) }),
+    publishedEvents(db, { from, to }),
+    resolution.state === "member"
+      ? upcomingBookingsFor(db, {
+          membershipId: resolution.member.membershipId,
+          personId: resolution.member.personId,
+          from: now,
+          /* The calendar marks every day the member is coming in, across the
+             whole horizon, so this is a roster rather than a preview. It is one
+             member's own bookings — tens of rows at the very most. */
+          limit: 200,
+        })
+      : Promise.resolve([]),
   ]);
 
-  const week = programmeWeek({
-    from: now,
-    days: WINDOW_DAYS,
+  /* Fixtures are weeks, never dates (Leagues Spec §8), so they do not land on a
+     day and are not merged into the programme. When they do arrive they arrive
+     here, and both the grid and the agenda pick them up with no further work —
+     which is why `hasFixture` is already a mark. */
+  const days = programmeWeek({
+    from,
+    days: lagosDaysBetween(from, to) + 1,
     openingHours: policy.openingHours,
     events,
     fixtures: [],
   });
 
-  /* Declared before the strip that calls it. A `const` arrow referenced above
-     its own declaration is a temporal dead zone error at request time, which no
-     type check catches. */
-  const hrefFor = (next: { day?: string; mode?: DiaryMode }) => {
+  const bookedKeys = new Set(
+    bookings.map((booking) => lagosDateKey(booking.slotStart)),
+  );
+
+  const month = calendarMonth({
+    monthKey,
+    today: now,
+    programme: days,
+    bookedKeys,
+  });
+
+  /* Every destination is built here and handed over finished. A function cannot
+     be serialised into a client component — the Diary is the only portal screen
+     that crosses that boundary, and it is the screen that returned a 500 on
+     every request the first time this rule was broken. */
+  const hrefFor = (next: {
+    day?: string;
+    mode?: DiaryMode;
+    month?: MonthKey;
+  }): string => {
     const query = new URLSearchParams();
-    query.set("day", next.day ?? selectedKey);
+    const day = next.day ?? selectedKey;
+    query.set("day", day);
+
+    /* The month is only in the URL when it is not the selected day's own month.
+       Otherwise every link carries a redundant parameter that has to agree with
+       the day beside it, and the first one to disagree is a calendar showing
+       September with the fourth of August selected. */
+    const nextMonth = next.month ?? monthKey;
+    if (nextMonth !== monthKeyOf(parseDateColumn(day))) {
+      query.set("month", nextMonth);
+    }
+
     const nextMode = next.mode ?? mode;
     if (nextMode !== "programme") query.set("mode", nextMode);
+
     return `${routes.portalBook}?${query.toString()}`;
   };
 
-  const strip: WeekDay[] = weekFrom(now, STRIP_DAYS).map((date) => {
-    const key = lagosDateKey(date);
-    const day = week.find((candidate) => candidate.dateKey === key);
-    const parts = lagosParts(date);
+  const view: CalendarView = {
+    monthKey: month.monthKey,
+    label: month.label,
+    weeks: month.weeks.map((week) =>
+      week.map(
+        (cell): CalendarDay => ({
+          ...cell,
+          /* Past days are rendered and not linked. The Diary answers "what
+             could I do", and a past Tuesday has no answer — Compete holds the
+             member's history and holds it better than an empty grid would. */
+          href: cell.isPast ? null : hrefFor({ day: cell.dateKey, month: month.monthKey }),
+        }),
+      ),
+    ),
+    previousHref: month.previousKey
+      ? hrefFor({ month: month.previousKey, day: firstSelectableDay(month.previousKey, now) })
+      : null,
+    nextHref: month.nextKey
+      ? hrefFor({ month: month.nextKey, day: firstSelectableDay(month.nextKey, now) })
+      : null,
+    previousLabel: month.previousKey ? monthLabel(month.previousKey) : null,
+    nextLabel: month.nextKey ? monthLabel(month.nextKey) : null,
+    todayHref: hrefFor({
+      day: lagosDateKey(now),
+      month: monthKeyOf(now),
+    }),
+  };
 
-    return {
-      key,
-      weekday: WEEKDAY_LABELS[parts.weekday],
-      dayOfMonth: String(parts.day),
-      hasProgramme: day ? hasProgramme(day) : false,
-      isToday: key === lagosDateKey(now),
-      /* Built here rather than in the strip: a function cannot cross into a
-         client component, and the URL grammar belongs to this page anyway. */
-      href: hrefFor({ day: key }),
-    };
-  });
-
-  const day = week.find((candidate) => candidate.dateKey === selectedKey) ?? null;
+  const day = days.find((candidate) => candidate.dateKey === selectedKey) ?? null;
+  const agenda = agendaFrom({ days, today: now, limit: AGENDA_LIMIT });
 
   return (
     <>
@@ -181,34 +284,63 @@ export default async function DiaryPage({
         lead="What is on, and what is free."
       />
 
+      {/* ============================================================== 1 of 3
+          THE CALENDAR. */}
+      <Section ground="chalk" rhythm="tight">
+        <MonthCalendar view={view} selectedKey={selectedKey} />
+      </Section>
+
+      {/* ============================================================== 2 of 3
+          COMING UP — the same list on every month. See AGENDA_DAYS. */}
+      <Section ground="soffit" rhythm="tight">
+        <Kicker className="mb-2">Coming up</Kicker>
+        <Agenda
+          items={agenda}
+          hrefForDay={(dateKey) =>
+            hrefFor({ day: dateKey, month: monthKeyOf(parseDateColumn(dateKey)) })
+          }
+          emptyLine="Nothing out of the ordinary is published for the next few months. The club's opening hours are on the calendar above."
+        />
+      </Section>
+
+      {/* ============================================================== 3 of 3
+          THE DAY. */}
       <Section ground="chalk" rhythm="tight">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <ModeSwitch
-            mode={mode}
-            programmeHref={hrefFor({ mode: "programme" })}
-            availabilityHref={hrefFor({ mode: "availability" })}
-          />
-          <Button href={routes.portalBookNew} variant="primary">
-            Book a session
+          <H2>{formatWeekdayDate(selected)}</H2>
+          <Button href={bookHref(selectedKey)} variant="primary">
+            Book this day
           </Button>
         </div>
 
-        <WeekStrip className="mt-4" days={strip} selectedKey={selectedKey} />
+        <ModeSwitch
+          className="mt-3"
+          mode={mode}
+          programmeHref={hrefFor({ mode: "programme" })}
+          availabilityHref={hrefFor({ mode: "availability" })}
+        />
       </Section>
 
       {mode === "programme" ? (
-        <ProgrammeMode day={day} date={selected} />
+        <ProgrammeMode day={day} />
       ) : (
         <AvailabilityMode
+          db={db}
           date={selected}
           now={now}
           policy={policy}
-          lanes={lanes}
-          booked={booked}
           disciplines={
             resolution.state === "member"
               ? resolution.member.tier.disciplineAccess
               : []
+          }
+          /* P1. The screen is handed the sentence and never the membership: it
+             does not know what a booking horizon is and must not learn. */
+          horizonLine={
+            resolution.state === "member"
+              ? (bookingHorizonBlock(resolution.member.tier, now, selected)
+                  ?.message ?? null)
+              : null
           }
           closed={day?.closed ?? false}
         />
@@ -217,15 +349,7 @@ export default async function DiaryPage({
       {/* The member's own bookings on this day, in either mode. §7.2's booking
           detail: a member looking at Saturday should see that they are already
           coming on Saturday without switching surfaces to find out. */}
-      {resolution.state === "member" && (
-        <YourBookings
-          db={db}
-          membershipId={resolution.member.membershipId}
-          personId={resolution.member.personId}
-          dateKey={selectedKey}
-          now={now}
-        />
-      )}
+      <YourBookings bookings={bookings} dateKey={selectedKey} />
     </>
   );
 }
@@ -234,17 +358,9 @@ export default async function DiaryPage({
    MODE ONE — WHAT'S ON. §7.2's programme list, and the default.
    ========================================================================= */
 
-function ProgrammeMode({
-  day,
-  date,
-}: {
-  day: ProgrammeDay | null;
-  date: Date;
-}) {
+function ProgrammeMode({ day }: { day: ProgrammeDay | null }) {
   return (
-    <Section ground="soffit" rhythm="default">
-      <Kicker className="mb-2">{formatWeekdayDate(date)}</Kicker>
-
+    <Section ground="chalk" rhythm="default">
       {!day || day.entries.length === 0 ? (
         /**
          * P2. Two different absences, and they are not the same sentence.
@@ -256,15 +372,16 @@ function ProgrammeMode({
          * infer which of the two they are looking at.
          */
         <>
-          <H2>Nothing scheduled.</H2>
+          <H3>Nothing scheduled.</H3>
           <Body muted className="mt-2 max-w-[68ch]">
-            Nothing is published for this day. Try another in the strip above.
+            Nothing is published for this day. Try another on the calendar
+            above.
           </Body>
         </>
       ) : (
         <>
-          <H2>{day.closed ? "The club is closed." : "What's on."}</H2>
-          <ul className="mt-4 flex flex-col gap-3">
+          <H3>{day.closed ? "The club is closed." : "What's on"}</H3>
+          <ul className="mt-3 flex flex-col gap-3">
             {day.entries.map((entry, index) => (
               <li key={`${entry.title}-${index}`}>
                 <ProgrammeLine entry={entry} />
@@ -278,31 +395,27 @@ function ProgrammeMode({
 }
 
 /* ============================================================================
-   MODE TWO — AVAILABILITY. §7.2's grid, blocked on nothing since 0008 and
-   honest until the club publishes hours.
+   MODE TWO — AVAILABILITY. §7.2's grid, honest until the club publishes hours.
    ========================================================================= */
 
-function AvailabilityMode({
+async function AvailabilityMode({
+  db,
   date,
   now,
   policy,
-  lanes,
-  booked,
   disciplines,
+  horizonLine,
   closed,
 }: {
+  db: ReturnType<typeof getArmoryDb>;
   date: Date;
   now: Date;
   policy: Awaited<ReturnType<typeof clubAvailabilityPolicy>>;
-  lanes: Awaited<ReturnType<typeof clubLanes>>;
-  booked: Awaited<ReturnType<typeof bookedInWindow>>;
   disciplines: readonly string[];
+  /** The tier's booking horizon as a sentence, or null. Never a number. */
+  horizonLine: string | null;
   closed: boolean;
 }) {
-  const dayKey = lagosDateKey(date);
-  const onThisDay = <T extends { start: Date }>(slots: readonly T[]) =>
-    slots.filter((slot) => lagosDateKey(slot.start) === dayKey);
-
   /**
    * A closure hides the grids entirely rather than rendering them empty.
    *
@@ -313,69 +426,91 @@ function AvailabilityMode({
   if (closed) {
     return (
       <Section ground="chalk" rhythm="default">
-        <Kicker className="mb-2">{formatWeekdayDate(date)}</Kicker>
-        <H2>The club is closed on this day.</H2>
+        <H3>The club is closed on this day.</H3>
         <Body muted className="mt-2 max-w-[68ch]">
-          Nothing is bookable. The rest of the week is in the strip above.
+          Nothing is bookable. The rest of the month is on the calendar above.
         </Body>
       </Section>
     );
   }
 
-  /* §14's window: 14 days of grid, then filtered to the chosen day. One
-     computation for the window rather than one per day, because the slot ids
-     must be identical whichever day the member is looking at. */
-  const tables = onThisDay(
-    availableTables({ policy, booked, now, days: WINDOW_DAYS }),
-  );
+  /**
+   * Past the member's own horizon, the grid is not drawn at all.
+   *
+   * The calendar reaches three months ahead and most tiers do not. Drawing a
+   * grid of bookable Saturdays the club will refuse hands the member a
+   * discovery at step five of the booking flow, after they have chosen a day
+   * and named their guests — P5's failure, one screen earlier. The sentence
+   * comes from the capability layer; this screen only renders it.
+   */
+  if (horizonLine) {
+    return (
+      <Section ground="chalk" rhythm="default">
+        <H3>Not yet bookable.</H3>
+        <Body muted className="mt-2 max-w-[68ch]">
+          {horizonLine} What is on is still on the calendar above, and this day
+          opens for booking as it comes closer.
+        </Body>
+      </Section>
+    );
+  }
+
+  /**
+   * The grid is projected from today to the chosen day and then filtered to it.
+   *
+   * `availableSlots` counts days forward from now because a slot id must be the
+   * same instant whichever screen produced it — the booking flow re-derives the
+   * identical grid on commit and refuses any id not on it. Starting the
+   * projection at the chosen day instead would produce the same ids by
+   * coincidence and stop doing so the first time the step changed.
+   */
+  const days = lagosDaysBetween(now, date) + 1;
+  const dayKey = lagosDateKey(date);
+  const onThisDay = <T extends { start: Date }>(slots: readonly T[]) =>
+    slots.filter((slot) => lagosDateKey(slot.start) === dayKey);
+
+  const [lanes, booked] = await Promise.all([
+    clubLanes(db),
+    bookedInWindow(db, {
+      from: now,
+      to: addDays(startOfLagosDay(date), 1),
+    }),
+  ]);
+
+  const tables = onThisDay(availableTables({ policy, booked, now, days }));
   const tableReason = emptyTableReason(policy);
 
   return (
     <Section ground="chalk" rhythm="default">
-      <Kicker className="mb-2">{formatWeekdayDate(date)}</Kicker>
-
       {/* §7.4, and P4. The tables come FIRST. The club is a hospitality
           operation with a shooting range attached, and a screen that opens on a
           lane grid has re-inverted the strategy in the surface members touch
           most often. */}
-      <H3>A table</H3>
-      {tableReason ? (
-        <Body muted className="mt-1">
-          {tableReason}
-        </Body>
-      ) : tables.length === 0 ? (
-        <Body muted className="mt-1">
-          Nothing free on this day.
-        </Body>
-      ) : (
-        <SlotRow slots={tables} />
-      )}
+      <SlotBoard
+        title="A table"
+        slots={tables}
+        reason={tableReason}
+        hrefFor={slotHref}
+      />
 
-      <div className="mt-8 flex flex-col gap-6">
+      <div className="mt-6 flex flex-col gap-6">
         {disciplines.map((discipline) => {
           const slots = onThisDay(
-            availableSlots({ policy, lanes, booked, discipline, now, days: WINDOW_DAYS }),
+            availableSlots({ policy, lanes, booked, discipline, now, days }),
           );
-          const reason =
-            slots.length === 0 ? emptyReason(policy, lanes, discipline) : null;
 
           return (
-            <div key={discipline}>
-              <H3>{discipline}</H3>
-              {reason ? (
-                /* §4.3's rule applied to an empty list: never a blank screen,
-                   and never a stack of conditions. One sentence. */
-                <Body muted className="mt-1">
-                  {reason}
-                </Body>
-              ) : slots.length === 0 ? (
-                <Body muted className="mt-1">
-                  Nothing free on this day.
-                </Body>
-              ) : (
-                <SlotRow slots={slots} />
-              )}
-            </div>
+            <SlotBoard
+              key={discipline}
+              title={discipline}
+              slots={slots}
+              reason={
+                slots.length === 0
+                  ? emptyReason(policy, lanes, discipline)
+                  : null
+              }
+              hrefFor={slotHref}
+            />
           );
         })}
 
@@ -390,64 +525,8 @@ function AvailabilityMode({
   );
 }
 
-/**
- * One line of slots.
- *
- * A full slot is RENDERED, with nothing free, rather than filtered out. §6.2:
- * "a Saturday that silently vanishes because it is busy reads as the club being
- * closed — which sends them to WhatsApp to ask, which is the phone call the
- * portal exists to prevent."
- */
-function SlotRow({
-  slots,
-}: {
-  slots: readonly {
-    id: string;
-    start: Date;
-    free: number;
-    capacity: number;
-    discipline: string | null;
-  }[];
-}) {
-  return (
-    <ul className="mt-2 flex flex-wrap gap-2">
-      {slots.map((slot) => {
-        const full = slot.free === 0;
-
-        return (
-          <li key={slot.id}>
-            {full ? (
-              <span
-                className="inline-flex min-h-6 flex-col items-center justify-center rounded-control border border-[var(--rule)]/40 px-2 py-1 opacity-55"
-                aria-label={`${formatTime(slot.start)} — full`}
-              >
-                <span className="font-display text-body font-bold line-through">
-                  {formatTime(slot.start)}
-                </span>
-                <Caption>Full</Caption>
-              </span>
-            ) : (
-              <Link
-                href={slotHref(slot)}
-                className="inline-flex min-h-6 flex-col items-center justify-center rounded-control border border-[var(--ink)] px-2 py-1 no-underline"
-              >
-                <span className="font-display text-body font-bold">
-                  {formatTime(slot.start)}
-                </span>
-                <Caption>
-                  {slot.free} {slot.free === 1 ? "place" : "places"}
-                </Caption>
-              </Link>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 /** A slot links into the booking flow with step one already answered. */
-function slotHref(slot: { id: string; discipline: string | null }): string {
+function slotHref(slot: Slot): string {
   const query = new URLSearchParams({ slot: slot.id });
   if (slot.discipline) {
     query.set("type", "shoot");
@@ -458,30 +537,21 @@ function slotHref(slot: { id: string; discipline: string | null }): string {
   return `${routes.portalBookNew}?${query.toString()}`;
 }
 
+/** The booking flow, opened on the day the member is looking at. */
+const bookHref = (dateKey: string): string =>
+  `${routes.portalBookNew}?day=${dateKey}`;
+
 /* ============================================================================
    THE MEMBER'S OWN BOOKINGS ON THIS DAY
    ========================================================================= */
 
-async function YourBookings({
-  db,
-  membershipId,
-  personId,
+function YourBookings({
+  bookings,
   dateKey,
-  now,
 }: {
-  db: ReturnType<typeof getArmoryDb>;
-  membershipId: string;
-  personId: string;
+  bookings: Awaited<ReturnType<typeof upcomingBookingsFor>>;
   dateKey: string;
-  now: Date;
 }) {
-  const bookings = await upcomingBookingsFor(db, {
-    membershipId,
-    personId,
-    from: now,
-    limit: 20,
-  });
-
   const onThisDay = bookings.filter(
     (booking) => lagosDateKey(booking.slotStart) === dateKey,
   );
@@ -508,10 +578,8 @@ async function YourBookings({
 }
 
 /* ============================================================================
-   DAYS
+   DAYS AND MONTHS
    ========================================================================= */
-
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 /**
  * The day the member is looking at.
@@ -525,5 +593,46 @@ function selectedDay(raw: string | undefined, now: Date): Date {
   if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return now;
 
   const parsed = parseDateColumn(raw);
-  return Number.isNaN(parsed.getTime()) ? now : parsed;
+  if (Number.isNaN(parsed.getTime())) return now;
+
+  /* A day before today, or past the far edge of the horizon, falls back to
+     today rather than rendering a grid the calendar refuses to reach. A link
+     sent last week is the ordinary way this happens. */
+  if (parsed.getTime() < startOfLagosDay(now).getTime()) return now;
+  if (!withinHorizon(monthKeyOf(parsed), now)) return now;
+
+  return parsed;
 }
+
+/**
+ * The month the calendar shows.
+ *
+ * The explicit parameter wins where it is a month the Diary will reach —
+ * paging from August into September with the fourth of August still selected is
+ * a real state and the arrows produce it. Otherwise it is the selected day's
+ * own month, which is what a link carrying only `?day=` should show.
+ */
+function selectedMonth(
+  raw: string | undefined,
+  selected: Date,
+  now: Date,
+): MonthKey {
+  const parsed = parseMonthKey(raw);
+  if (parsed && raw && withinHorizon(raw, now)) return raw;
+  return monthKeyOf(selected);
+}
+
+/**
+ * Which day an arrow lands on.
+ *
+ * The first of the month, except in the month that contains today, where it is
+ * today. Landing on the first of THIS month would select a day already past and
+ * `selectedDay` would send it straight back to today — a "previous month" arrow
+ * that appeared to do nothing.
+ */
+function firstSelectableDay(monthKey: MonthKey, now: Date): string {
+  return monthKey === monthKeyOf(now) ? lagosDateKey(now) : `${monthKey}-01`;
+}
+
+const earlier = (a: Date, b: Date): Date => (a.getTime() <= b.getTime() ? a : b);
+const later = (a: Date, b: Date): Date => (a.getTime() >= b.getTime() ? a : b);

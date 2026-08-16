@@ -146,3 +146,32 @@ export function Section({
 /** Exposed for the /brand reference page. */
 export const groundNames = Object.keys(GROUNDS) as Ground[];
 export const isSingleInk = (g: Ground) => GROUNDS[g].singleInk;
+
+/**
+ * A ground's colour contract, for a panel nested inside a different one.
+ *
+ * ===========================================================================
+ * WHY THIS IS EXPORTED, AND WHEN IT IS THE RIGHT ANSWER
+ *
+ * Almost never. A `Section` establishes a ground and everything inside it
+ * consumes `--ink`, `--rule` and the rest without choosing a colour, which is
+ * the whole discipline this file enforces. Reaching for these classes directly
+ * is how a component starts picking colours again.
+ *
+ * There is one case it does not cover, and it is a measured one rather than a
+ * stylistic preference. Some marks are BRAND colours with a fixed value — the
+ * Ten Ring Red centre dot most of all — and their contrast is a property of
+ * what is behind them. Red measures 3.79:1 on Chalk and 1.68:1 on Soffit Blue,
+ * so a red dot rendered inside a Soffit Blue section is a non-text indicator
+ * at half the ratio WCAG 2.1 requires, and no amount of consuming `--ink`
+ * fixes it because the dot is not ink.
+ *
+ * `BottomNav` hit this first and solved it the same way: rather than pick a
+ * different red — which Brand Guidelines §3 forbids, and which would make the
+ * dot a different dot on one surface — it gives the marker the opaque ground
+ * the brand already guarantees it. This is that move, made reusable.
+ *
+ * So: use it to give a small panel a ground of its own, and never to colour
+ * type. If what you want is text in a different colour, you want a `Section`.
+ */
+export const groundClasses = (ground: Ground): string => GROUNDS[ground].classes;

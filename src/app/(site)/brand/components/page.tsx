@@ -26,6 +26,16 @@ import { StatusPill } from "@/components/member/StatusPill";
 import { AllowanceMeter } from "@/components/member/AllowanceMeter";
 import { ScoreLine } from "@/components/member/ScoreLine";
 import { ProgrammeLine } from "@/components/member/ProgrammeLine";
+import {
+  MonthCalendar,
+  type CalendarView,
+} from "@/components/member/DiaryCalendar";
+import { WeekRail, type RailDay } from "@/components/member/WeekRail";
+import { Agenda } from "@/components/member/Agenda";
+import { SlotBoard } from "@/components/member/SlotBoard";
+import { agendaFrom, calendarDays, calendarMonth } from "@/domain/calendar";
+import { programmeForDay } from "@/domain/programme";
+import type { Slot } from "@/domain/availability";
 import { fixtureCredentials, fixtureTiers } from "@/lib/fixtures";
 import { cta, routes, site } from "@/lib/site";
 
@@ -419,8 +429,173 @@ export default function ComponentsPage() {
           </li>
         </ul>
       </Section>
+
+      <Ref
+        n="16"
+        name="MonthCalendar"
+        note="The Diary's month. The club is open most days, so the operating rhythm is carried by the legibility of the numeral rather than by a glyph — a mark on every one of thirty-one cells carries no information. The glyphs are reserved for the exceptional days a member is scanning for: a filled square is something on, a hollow one a league round, a teal edge the member's own booking, a struck numeral a closure. Arrow keys move between days; the arrows travel three months and stop, because beyond that the club has decided nothing."
+      />
+      <Section ground="chalk">
+        <MonthCalendar view={referenceMonth()} selectedKey="2026-08-20" />
+      </Section>
+
+      <Ref
+        n="17"
+        name="WeekRail"
+        note="The same marks, seven days, at the top of Today's At the club card. It does not select — every cell is a link out to the Diary on that day, because Today has exactly one day in it. Both surfaces render their marks through DayMarks, so a filled square cannot come to mean two things."
+      />
+      <Section ground="soffit">
+        <WeekRail days={referenceRail()} />
+      </Section>
+
+      <Ref
+        n="18"
+        name="Agenda"
+        note="What a grid cannot answer. The month shows a member WHERE things are; this shows WHAT they are, in order, across the whole horizon rather than the month on screen. The operating rhythm is excluded — ninety days of Range open is the opening hours printed ninety times, not an agenda — which is also why an empty list here is the honest signal that nobody is writing to the events table."
+      />
+      <Section ground="chalk">
+        <Agenda
+          items={referenceAgenda()}
+          hrefForDay={() => routes.portalBook}
+          emptyLine="Nothing out of the ordinary is published for the next few months."
+        />
+      </Section>
+
+      <Ref
+        n="19"
+        name="SlotBoard"
+        note="Availability for one day, grouped morning / afternoon / evening — people do not hold a day as a list of times, and thirty identical chips in four wrapping rows is scanned by counting along a row. A full slot is rendered rather than filtered out (§6.2): a Saturday that vanishes because it is busy reads as the club being closed. The bar is a scanning aid and never the only statement — a bar cannot tell two places from three, which is the difference a member bringing a guest is reading for."
+      />
+      <Section ground="chalk">
+        <SlotBoard
+          title="A table"
+          slots={referenceSlots()}
+          reason={null}
+          hrefFor={() => routes.portalBookNew}
+        />
+        <div className="mt-6">
+          <SlotBoard
+            title="10m air pistol"
+            slots={[]}
+            reason="Every 10m air pistol lane is closed or under maintenance. Call the club."
+            hrefFor={() => routes.portalBookNew}
+          />
+        </div>
+      </Section>
     </>
   );
+}
+
+/* ============================================================================
+   SCAFFOLDING FOR THE CALENDAR SURFACES
+
+   A fixed date, so this page renders the same thing in every review. The marks
+   are the ones the club actually produces: a week that is open every day, one
+   guest evening, one closure, one fixture, and one booking of the member's own.
+   ========================================================================= */
+
+/** Thursday 13 August 2026 in Lagos, the date the domain tests also use. */
+const REFERENCE_TODAY = new Date("2026-08-13T06:00:00.000Z");
+
+const REFERENCE_HOURS = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+  weekday,
+  opens: 9 * 60,
+  closes: 18 * 60,
+  staffed: true,
+}));
+
+const REFERENCE_EVENTS = [
+  {
+    kind: "event" as const,
+    title: "Guest evening",
+    detail: null,
+    onDate: "2026-08-20",
+    startsMinute: 18 * 60,
+    endsMinute: 21 * 60,
+  },
+  {
+    kind: "closure" as const,
+    title: "Closed — public holiday",
+    detail: null,
+    onDate: "2026-08-24",
+    startsMinute: null,
+    endsMinute: null,
+  },
+];
+
+const REFERENCE_BOOKED = new Set(["2026-08-15"]);
+
+const referenceProgramme = (from: Date, days: number) =>
+  Array.from({ length: days }, (_, offset) =>
+    programmeForDay({
+      date: new Date(from.getTime() + offset * 86_400_000),
+      openingHours: REFERENCE_HOURS,
+      events: REFERENCE_EVENTS,
+      fixtures: [
+        { title: "League round 3", detail: null, onDate: "2026-08-27" },
+      ],
+    }),
+  );
+
+function referenceMonth(): CalendarView {
+  const shape = calendarMonth({ monthKey: "2026-08", today: REFERENCE_TODAY });
+  const month = calendarMonth({
+    monthKey: "2026-08",
+    today: REFERENCE_TODAY,
+    programme: referenceProgramme(shape.from, shape.weeks.length * 7),
+    bookedKeys: REFERENCE_BOOKED,
+  });
+
+  return {
+    monthKey: month.monthKey,
+    label: month.label,
+    weeks: month.weeks.map((week) =>
+      week.map((cell) => ({
+        ...cell,
+        href: cell.isPast ? null : routes.portalBook,
+      })),
+    ),
+    previousHref: null,
+    nextHref: routes.portalBook,
+    previousLabel: null,
+    nextLabel: "September 2026",
+    todayHref: routes.portalBook,
+  };
+}
+
+const referenceRail = (): RailDay[] =>
+  calendarDays({
+    from: REFERENCE_TODAY,
+    days: 7,
+    today: REFERENCE_TODAY,
+    programme: referenceProgramme(REFERENCE_TODAY, 7),
+    bookedKeys: REFERENCE_BOOKED,
+  }).map((cell) => ({ ...cell, href: routes.portalBook }));
+
+const referenceAgenda = () =>
+  agendaFrom({
+    days: referenceProgramme(REFERENCE_TODAY, 21),
+    today: REFERENCE_TODAY,
+  });
+
+/** Seven sessions, one of them gone and two of them nearly. */
+function referenceSlots(): Slot[] {
+  return [9, 10.25, 11.5, 12.75, 14, 15.25, 16.5].map((hour, index) => {
+    const start = new Date(
+      Date.UTC(2026, 7, 20, Math.floor(hour) - 1, (hour % 1) * 60),
+    );
+    const taken = [0, 2, 8, 8, 5, 1, 7][index];
+
+    return {
+      id: `2026-08-20T${String(Math.floor(hour)).padStart(2, "0")}:00`,
+      start,
+      end: new Date(start.getTime() + 3_600_000),
+      discipline: null,
+      capacity: 8,
+      taken,
+      free: 8 - taken,
+    };
+  });
 }
 
 /** Divider naming each component under review. */

@@ -110,6 +110,17 @@ export const requiredPairs: Array<{
   { fg: "ten-ring-red", bg: "chalk", need: "graphic", role: "Centre dot / focus ring on Chalk" },
   { fg: "ten-ring-red", bg: "charred-timber", need: "graphic", role: "Centre dot / focus ring on Charred Timber" },
   { fg: "sight-grey", bg: "chalk", need: "graphic", role: "Hairline rules and dividers on Chalk" },
+
+  /* The calendar's marks. Each is a non-text indicator carrying meaning on its
+     own, so each needs 3:1 against the ground it is drawn on — and the ground
+     is Chalk in both places by construction: the Diary's grid sits in a Chalk
+     section, and Today's rail gives every cell a Chalk face precisely so these
+     hold. Red measures 1.68:1 on Soffit Blue, which is the measurement that
+     decision came from and the reason the pair below is the only one the build
+     is allowed to rely on. */
+  { fg: "ten-ring-red", bg: "chalk", need: "graphic", role: "Calendar: today's dot, and a day with something on" },
+  { fg: "vip-teal", bg: "chalk", need: "graphic", role: "Calendar: the bar on a day the member is coming in" },
+  { fg: "reticle-black", bg: "chalk", need: "graphic", role: "Calendar: a league round's outline, and the grid's rules" },
 ];
 
 export function auditRequiredPairs() {

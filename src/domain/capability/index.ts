@@ -356,6 +356,43 @@ function qualificationBlock(
    MAY_BOOK — evaluated in the portal (§6.2 Book a session).
    -------------------------------------------------------------------------- */
 
+/**
+ * The booking horizon, asked about a DAY rather than about a slot.
+ *
+ * ===========================================================================
+ * WHY THIS IS EXPORTED, AND WHY IT IS NOT THE SCREEN'S OWN COMPARISON
+ *
+ * The Diary's calendar reaches three months ahead, and most tiers do not. A
+ * member on a fourteen-day horizon paging to October and finding a grid of
+ * bookable Saturdays has been shown something the club will refuse — and they
+ * will find out at step five of the booking flow, having chosen a day and named
+ * their guests. That is precisely the discovery-at-the-desk failure P5 exists
+ * to prevent, one screen earlier.
+ *
+ * The screen must therefore be able to say so. P1 forbids it working out WHY on
+ * its own — "no screen makes its own permission decision" — so it does not
+ * compare a date against a number. It asks here and renders the sentence it is
+ * handed, exactly as `RemedyCard` does, and the sentence comes from `reasons.ts`
+ * where every other message the member reads comes from.
+ *
+ * `mayBook` calls this too, which is the point: one rule, one message, and a
+ * calendar that cannot drift from the check at commit.
+ *
+ * Horizon is counted in whole Lagos days, not in elapsed hours. A member told
+ * they may book "14 days ahead" means the calendar, and an hours-based
+ * comparison would refuse a 6pm slot booked at 7pm a fortnight earlier for
+ * reasons no one could explain at the desk.
+ */
+export function bookingHorizonBlock(
+  tier: Pick<TierPermissions, "bookingHorizonDays">,
+  now: Date,
+  day: Date,
+): Block | null {
+  return lagosDaysBetween(now, day) > tier.bookingHorizonDays
+    ? reason.bookingHorizonExceeded(tier.bookingHorizonDays)
+    : null;
+}
+
 function mayBook(
   subject: Subject,
   ctx: Extract<Context, { capability: "MAY_BOOK" }>,
@@ -366,14 +403,8 @@ function mayBook(
   /* Non-null after `standing` returned null. */
   const tier = (subject.membership as MembershipSnapshot).tier;
 
-  /* Horizon is counted in whole Lagos days, not in elapsed hours. A member
-     told they may book "14 days ahead" means the calendar, and an hours-based
-     comparison would refuse a 6pm slot booked at 7pm a fortnight earlier for
-     reasons no one could explain at the desk. */
-  const daysAhead = lagosDaysBetween(ctx.now, ctx.slotStart);
-  if (daysAhead > tier.bookingHorizonDays) {
-    return deny(reason.bookingHorizonExceeded(tier.bookingHorizonDays));
-  }
+  const horizon = bookingHorizonBlock(tier, ctx.now, ctx.slotStart);
+  if (horizon) return deny(horizon);
 
   if (ctx.heldBookings >= tier.concurrentBookingsMax) {
     return deny(reason.concurrentBookingLimit(tier.concurrentBookingsMax));

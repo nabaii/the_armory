@@ -22,11 +22,15 @@ import { RemedyStack } from "@/components/member/RemedyCard";
 import { ScoreLine } from "@/components/member/ScoreLine";
 import { StatusPill } from "@/components/member/StatusPill";
 import { ProgrammeLine } from "@/components/member/ProgrammeLine";
+import { WeekRail, type RailDay } from "@/components/member/WeekRail";
+import { calendarDays } from "@/domain/calendar";
 import {
   addDays,
   formatTime,
   formatWeekdayDate,
   isSameLagosDay,
+  lagosDateKey,
+  lagosDaysBetween,
 } from "@/lib/time";
 import { routes } from "@/lib/site";
 
@@ -105,7 +109,17 @@ export default async function TodayPage() {
       membershipId: armory.membershipId,
       personId: armory.personId,
       from: now,
-      limit: 3,
+      /**
+       * Enough to mark the rail, not only to name the next session.
+       *
+       * The card itself needs one booking and the hosting prompt needs the
+       * first without companions. The rail below them needs every booking in
+       * the next seven days, and a limit of three would silently leave a fourth
+       * unmarked — a member would see an empty Saturday on Today and a booked
+       * Saturday in the Diary, and would be right to trust neither. It is one
+       * member's own bookings over one week: tens of rows at the very most.
+       */
+      limit: 20,
     }),
     competitiveRecordFor({ personId: armory.personId, memberId: member.id }),
     clubOpeningHours(db),
@@ -128,6 +142,27 @@ export default async function TodayPage() {
 
   const today = week[0];
   const next = bookings[0] ?? null;
+
+  /**
+   * The next seven days, marked, for the rail at the top of card 3.
+   *
+   * Built from the same `calendarDays` the Diary's grid is built from, so a day
+   * carrying a filled square here carries one there. Two markings of the same
+   * days would disagree within a release and the version a member believed
+   * would depend on which tab they happened to be on.
+   */
+  const rail: RailDay[] = calendarDays({
+    from: now,
+    days: WEEK_AHEAD_DAYS,
+    today: now,
+    programme: week,
+    bookedKeys: new Set(
+      bookings.map((booking) => lagosDateKey(booking.slotStart)),
+    ),
+  }).map((cell) => ({
+    ...cell,
+    href: `${routes.portalBook}?day=${cell.dateKey}`,
+  }));
   const toHost =
     armory.tier.canHost && armory.allowance.remaining > 0
       ? bookingWorthHosting(bookings)
@@ -197,6 +232,21 @@ export default async function TodayPage() {
           teaches the member not to open the application. */}
       <Section ground="soffit" rhythm="default">
         <Kicker className="mb-2">At the club</Kicker>
+
+        {/*
+          The rail comes FIRST, above whatever the card has to say about
+          tonight. §6.4's requirement is that a member with nothing booked still
+          sees the club's week, and the sentence below answers that in prose —
+          which a member reads, and cannot scan. Seven marked cells answer "is
+          Saturday worth coming to" without reading, and each is a way into the
+          Diary on that day.
+
+          It does not select. Today has exactly one day in it, and a rail that
+          changed the card beneath it would be a small Diary embedded in Today —
+          the surface §7.1 spends a paragraph keeping separate.
+        */}
+        <WeekRail days={rail} className="mb-4" />
+
         <TonightOrTheWeek today={today} week={week} />
       </Section>
 
@@ -282,7 +332,13 @@ function NextBooking({ booking, now }: { booking: MemberBooking; now: Date }) {
       </H2>
 
       <Body muted className="mt-1">
-        {purposeLine(booking)}
+        {/*
+          How far off it is, before what it is for. A date is a fact a member
+          has to do arithmetic on; "in three days" is the answer they were
+          going to work out anyway, and it is the half of this card that decides
+          whether they read the rest of it now or later.
+        */}
+        {countdownLine(booking.slotStart, now)} · {purposeLine(booking)}
       </Body>
 
       {booking.companions.length > 0 && (
@@ -313,6 +369,34 @@ function NextBooking({ booking, now }: { booking: MemberBooking; now: Date }) {
       )}
     </>
   );
+}
+
+/**
+ * How far off a booking is, in whole days.
+ *
+ * ===========================================================================
+ * DAYS, AND NEVER HOURS OR MINUTES
+ *
+ * "In 4 hours" is the obvious next increment and it is the one that cannot be
+ * shipped. This page is `force-dynamic` but the shell around it is a PWA that
+ * serves a cached screen when the phone is offline (§8.1), and an hours
+ * countdown rendered on the server is wrong by however long the screen has been
+ * cached — a member reading "in 2 hours" off a screen cached this morning has
+ * been told something false about the one thing on this card that matters.
+ *
+ * A day boundary is coarse enough to survive that: a screen cached inside the
+ * same Lagos day still says "today", which is the claim it was making when it
+ * was rendered. Anything finer would need a live clock in the client, which is
+ * a component, a bundle and a hydration boundary bought for a phrase.
+ */
+function countdownLine(slotStart: Date, now: Date): string {
+  const days = lagosDaysBetween(now, slotStart);
+
+  if (days <= 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days < 7) return `In ${days} days`;
+  if (days < 14) return "Next week";
+  return `In ${Math.floor(days / 7)} weeks`;
 }
 
 /** What the booking is for, in the member's words rather than the schema's. */
@@ -358,7 +442,7 @@ function TonightOrTheWeek({
           ))}
         </ul>
         <QuietAction href={routes.portalBook}>
-            The whole week
+            The club&rsquo;s diary
           </QuietAction>
       </>
     );
@@ -406,7 +490,7 @@ function TonightOrTheWeek({
         ))}
       </ul>
       <QuietAction href={routes.portalBook}>
-            The whole week
+            The club&rsquo;s diary
           </QuietAction>
     </>
   );
