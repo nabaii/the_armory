@@ -22,16 +22,33 @@ import { cn } from "@/lib/cn";
  * So this is a client component for one reason only: it needs to know which
  * day and mode are current in order to mark them, and marking them is the whole
  * of its interactivity. Nothing here fetches, holds or mutates anything.
+ *
+ * ===========================================================================
+ * EVERY DESTINATION ARRIVES AS A STRING, NOT AS A FUNCTION THAT BUILDS ONE
+ *
+ * The first version took an `hrefFor` callback, which is the natural shape when
+ * the page owns the URL grammar — and it is not expressible across this
+ * boundary. A function cannot be serialised into a client component, and React
+ * refuses the render: the Diary returned a 500 on every request while every
+ * other portal screen was fine, because it is the only one that crosses here.
+ *
+ * Passing the finished hrefs is better anyway. The URL grammar stays in one
+ * place on the server, these components stay dumb, and what they render is
+ * exactly what the page decided rather than what a callback reconstructs.
  */
 
 export type DiaryMode = "programme" | "availability";
 
 export function ModeSwitch({
   mode,
-  hrefFor,
+  programmeHref,
+  availabilityHref,
 }: {
   mode: DiaryMode;
-  hrefFor: (mode: DiaryMode) => string;
+  /** Where "What's on" goes, built by the page. */
+  programmeHref: string;
+  /** Where "Availability" goes, built by the page. */
+  availabilityHref: string;
 }) {
   return (
     <div
@@ -44,7 +61,7 @@ export function ModeSwitch({
         return (
           <Link
             key={option}
-            href={hrefFor(option)}
+            href={option === "programme" ? programmeHref : availabilityHref}
             aria-current={active ? "true" : undefined}
             className={cn(
               "rounded-control px-2 py-1 u-kicker no-underline",
@@ -72,17 +89,17 @@ export type WeekDay = {
   /** Whether anything at all is on. Marks the day as worth a tap. */
   readonly hasProgramme: boolean;
   readonly isToday: boolean;
+  /** This day's own destination, built by the page. See the header. */
+  readonly href: string;
 };
 
 export function WeekStrip({
   days,
   selectedKey,
-  hrefFor,
   className,
 }: {
   days: readonly WeekDay[];
   selectedKey: string;
-  hrefFor: (dayKey: string) => string;
   className?: string;
 }) {
   return (
@@ -94,7 +111,7 @@ export function WeekStrip({
           return (
             <li key={day.key} className="min-w-0 flex-1">
               <Link
-                href={hrefFor(day.key)}
+                href={day.href}
                 aria-current={selected ? "date" : undefined}
                 className={cn(
                   "relative flex min-h-6 min-w-[3rem] flex-col items-center justify-center",

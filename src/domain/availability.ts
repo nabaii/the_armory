@@ -477,6 +477,26 @@ export function emptyReason(
     return "The club has not published its opening hours yet.";
   }
 
+  /**
+   * Hours published, session length not.
+   *
+   * This branch could not be reached until the club published a week: with no
+   * hours the first branch always answered first, and `sessionMinutes` was a
+   * literal zero nobody could change. It is reachable the moment a founder sets
+   * opening hours and stops — which is the likeliest way this configuration
+   * gets half-done, because publishing the hours is the part that feels like
+   * the whole job.
+   *
+   * Without it the screen falls through to "nothing free on this day", which is
+   * the worst available answer: it is not true, it reads as a busy club, and it
+   * sends the member to WhatsApp to ask why a range that is open has no
+   * sessions. P2 wants the honest sentence, and the honest sentence names the
+   * thing that is actually missing.
+   */
+  if (policy.sessionMinutes <= 0) {
+    return "The club has not set how long a session runs, so nothing can be booked yet.";
+  }
+
   const forDiscipline = lanes.filter((lane) => lane.discipline === discipline);
   if (forDiscipline.length === 0) {
     return `The club does not have a range for ${discipline}.`;
@@ -510,6 +530,12 @@ export function emptyTableReason(policy: AvailabilityPolicy): string | null {
   }
   if (policy.openingHours.length === 0) {
     return "The club has not published its opening hours yet.";
+  }
+  /* The same half-configured state as the lane grid, and the same sentence.
+     A member should not have to work out that "nothing free" and "nothing set
+     up" are different problems. */
+  if (policy.sessionMinutes <= 0) {
+    return "The club has not set how long a session runs, so nothing can be booked yet.";
   }
   return null;
 }

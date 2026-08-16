@@ -15,6 +15,7 @@ import {
   type BookedSlot,
   type LaneInfo,
 } from "./availability";
+import { CLOSES, CLUB_HOURS_LINE, CLUB_WEEK, OPENS } from "@/content/club-week";
 
 /**
  * §6.2: "Availability computed from lanes, hours, officer coverage and existing
@@ -309,8 +310,94 @@ describe("an empty list says why", () => {
     );
   });
 
+  it("names an unset session length once hours are published", () => {
+    /* The half-configured state, and the likeliest way this ends up half done:
+       publishing the hours feels like the whole job. Without this branch the
+       screen falls through to "nothing free on this day", which is not true,
+       reads as a busy club, and sends the member to WhatsApp to ask why a
+       range that is open has no sessions. */
+    const halfDone = policy({ sessionMinutes: 0 });
+
+    assert.deepEqual(slots({ policy: halfDone }), []);
+    assert.match(
+      emptyReason(halfDone, [lane("l-1", "pistol")], "pistol") ?? "",
+      /how long a session runs/,
+    );
+    assert.match(
+      emptyTableReason({ ...halfDone, tableCapacity: 12 }) ?? "",
+      /how long a session runs/,
+    );
+  });
+
+  it("still names the hours first when neither is set", () => {
+    /* Order matters: a club with no hours and no session length has one thing
+       to do first, and being told about the second would be noise. */
+    assert.match(
+      emptyReason(UNCONFIGURED_AVAILABILITY, [lane("l-1", "pistol")], "pistol") ?? "",
+      /opening hours/,
+    );
+  });
+
   it("says nothing when there is nothing wrong", () => {
     assert.equal(emptyReason(policy(), [lane("l-1", "pistol")], "pistol"), null);
+  });
+});
+
+/* ============================================================================
+   THE CLUB'S OWN WEEK — declared by the founder, 16 August 2026
+
+   "Open from 9AM-6PM everyday."
+
+   These assert the declaration rather than the mechanism, and they are here so
+   that a change to the club's hours is a change somebody made on purpose. The
+   rows in armory.opening_hours are what the portal reads; this is the file both
+   the public sentence and `npm run db:hours` come from, and a silent edit to it
+   would move the club's week on two surfaces at once.
+   ========================================================================= */
+
+describe("the club's declared week", () => {
+  it("opens 09:00 to 18:00", () => {
+    assert.equal(OPENS, minuteOfDay(9));
+    assert.equal(CLOSES, minuteOfDay(18));
+  });
+
+  it("covers all seven days, once each", () => {
+    assert.equal(CLUB_WEEK.length, 7);
+    assert.deepEqual(
+      [...CLUB_WEEK.map((period) => period.weekday)].sort((a, b) => a - b),
+      [0, 1, 2, 3, 4, 5, 6],
+    );
+  });
+
+  it("declares an officer on the floor for the whole of it", () => {
+    /* Consequential rather than cosmetic: an unstaffed period yields NO
+       shooting slots while still publishing to the Diary as club open. If the
+       club's true coverage is narrower, this is the field to change. */
+    assert.ok(CLUB_WEEK.every((period) => period.staffed));
+  });
+
+  it("produces a bookable day once a session length exists", () => {
+    /* Nine hours, hourly, is nine sessions — and none at all without the
+       session length, which is the whole point of the branch above. */
+    const withWeek = { ...policy({ openingHours: CLUB_WEEK }), sessionMinutes: 60 };
+    const day = availableSlots({
+      policy: withWeek,
+      lanes: [lane("l-1", "pistol")],
+      booked: [],
+      discipline: "pistol",
+      now: NOW,
+      days: 1,
+    });
+
+    assert.equal(day.length, 9);
+    assert.equal(day[0].id, "2026-08-13T09:00");
+    assert.equal(day[8].id, "2026-08-13T17:00");
+  });
+
+  it("says the same thing to the public site", () => {
+    assert.match(CLUB_HOURS_LINE, /9am/);
+    assert.match(CLUB_HOURS_LINE, /6pm/);
+    assert.match(CLUB_HOURS_LINE, /every day/);
   });
 });
 

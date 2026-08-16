@@ -16,6 +16,8 @@
  * ---------------------------------------------------------------------------
  */
 
+import { CLUB_HOURS_LINE } from "@/content/club-week";
+
 /** Sentinel for content the client owes us. Never replace with a guess. */
 export const PENDING = null;
 
@@ -217,11 +219,15 @@ export const cta = {
 } as const;
 
 /* ---------------------------------------------------------------------------
-   OPERATIONAL CONTACT — all PENDING (spec §8, owner: Founder)
+   OPERATIONAL CONTACT — mostly PENDING (spec §8, owner: Founder)
 
    No invented numbers. Flow C is "a named contact and a direct telephone
    number, no form" — that audience is won in person and a wrong number is
    worse than a visible gap.
+
+   `hours` is the first of these the founder has settled, and it is settled in
+   src/content/club-week.ts rather than here, because the portal needs the same
+   fact as data rather than as a sentence.
    -------------------------------------------------------------------------- */
 
 export const contact = {
@@ -238,6 +244,18 @@ export const contact = {
   /** Displayed on /first-visit so a booking outage degrades to a phone call. */
   bookingsPhone: PENDING as Pending<string>,
 
-  /** Opening hours. Founder-editable in the CMS once wired. */
-  hours: PENDING as Pending<string>,
+  /**
+   * Opening hours, as the public site states them.
+   *
+   * Declared by the founder on 16 August 2026. This is the SENTENCE; the
+   * portal's availability grid reads `armory.opening_hours`, which is the same
+   * week expressed as rows and is published by `npm run db:hours`.
+   *
+   * Two places for one fact is a drift risk and it is the lesser evil here: the
+   * public site is prerendered and must not query the club's database on every
+   * load, and a marketing page that said nothing while the portal said 9 to 6
+   * would be the worse failure. Both read from src/content/club-week.ts, so a
+   * change is one edit and one script run.
+   */
+  hours: CLUB_HOURS_LINE as Pending<string>,
 } as const;

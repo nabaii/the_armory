@@ -206,38 +206,57 @@ export const contentGate: GateItem[] = [
     id: "hours",
     label: "Opening hours",
     owner: "Operations",
+    /* SETTLED, 16 August 2026: 9am-6pm, every day. src/content/club-week.ts. */
     resolved: has(contact.hours),
     severity: "degraded",
     note:
-      "Two places, one fact. This entry is the SENTENCE on the public site. " +
-      "The member portal reads armory.opening_hours (drizzle/0008), which is " +
-      "the same week expressed as rows — and until those rows exist the " +
-      "availability grid renders one honest sentence and nothing bookable, " +
-      "the red action explains itself, and the Diary shows no week. The " +
-      "column is no longer the blocker; somebody telling the system when the " +
-      "club is open is.",
+      "Two places, one fact, and both now answered. The public site states the " +
+      "sentence; the portal reads armory.opening_hours, which is the same week " +
+      "as rows. Both come from src/content/club-week.ts. " +
+      "THE ROWS ARE NOT WRITTEN BY A DEPLOY — run `npm run db:hours --apply` " +
+      "from a machine with the connection string, once, and again whenever the " +
+      "week changes. Until that runs, the portal behaves exactly as it did " +
+      "before: one honest sentence and nothing bookable.",
+  },
+  {
+    id: "session-length",
+    label: "How long does one booking occupy a lane?",
+    owner: "Operations",
+    resolved: false,
+    severity: "degraded",
+    note:
+      "club_settings.session_minutes is unset, and it is now the LAST thing " +
+      "between a published week and a bookable calendar: the availability " +
+      "grid divides an opening period into sessions, and with no session " +
+      "length it produces none — on every day, for every discipline. " +
+      "Deliberately not defaulted to an hour. A guessed session length is a " +
+      "number members plan their evenings around and the club never agreed, " +
+      "and it is the exact failure UNCONFIGURED_AVAILABILITY was written to " +
+      "prevent. `emptyReason` names this specifically rather than letting the " +
+      "screen read as a busy club, so a founder who publishes hours and finds " +
+      "nothing bookable is told why. Set with: " +
+      "update armory.club_settings set session_minutes = <minutes>;",
   },
   {
     id: "club-programme",
     label: "Does the club have a programme?",
     owner: "Founder",
-    resolved: false,
-    /**
-     * Degraded rather than blocker, and the distinction is exact: the portal
-     * ships either way. What the answer changes is whether it ships with four
-     * tabs or three.
-     */
+    /* SETTLED, 16 August 2026: yes. The Diary keeps its tab. */
+    resolved: true,
     severity: "degraded",
     note:
       "Members Portal §7.5, and §16 calls it the strongest single determinant " +
-      "of whether this portal reads as hospitality or as a booking tool. If " +
-      "the club has a programme — a reason to be there on an evening you are " +
-      "not shooting, published in advance — the Diary is the hospitality " +
-      "surface and earns its tab. If the honest answer is 'the range is open, " +
-      "come when you like', the correct structure is three tabs and an action, " +
-      "with availability living inside the booking flow. This is a commitment " +
-      "to operating the club a particular way. It is NOT an interface decision " +
-      "and must not be taken by the build team by default.",
+      "of whether this portal reads as hospitality or as a booking tool. " +
+      "ANSWERED: the founder confirms the club has a programme, so the Diary " +
+      "is the hospitality surface and keeps its tab — TODAY · DIARY · COMPETE " +
+      "· ME · BOOK. The alternative structure (three tabs, with availability " +
+      "inside the booking flow) is not built and is not needed. " +
+      "What the answer creates is an OBLIGATION rather than a feature: a tab " +
+      "promising a programme has to have one in it. The operating rhythm now " +
+      "fills it every day (9am-6pm, published), and the one-off feed — guest " +
+      "evenings, fixtures, closures — is the club's to keep current. An events " +
+      "table nobody writes to makes the tab emptier than no tab would have " +
+      "been, which is the failure §7.3 warns about.",
   },
   {
     id: "table-capacity",

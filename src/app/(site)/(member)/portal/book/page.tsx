@@ -59,18 +59,21 @@ import { routes } from "@/lib/site";
  * opening-hours migration that booking needed anyway.
  *
  * ===========================================================================
- * §7.5 — THE OPEN DECISION THIS TAB SITS ON
+ * §7.5 — THE DECISION THIS TAB SAT ON, NOW TAKEN
  *
  *   "If the club has a programme — a reason to be there on an evening you are
  *    not shooting, published in advance — Diary is the hospitality surface and
  *    it earns a tab. If the honest answer is *the range is open, come when you
  *    like*, then Diary is a date picker wearing a tab."
  *
- * That decision is the founder's and has not been taken. This tab is built as
- * the specification describes it, and the decision remains open in the
- * outstanding register (`club-programme`) rather than being taken here by
- * default — which is exactly what §16 asks: "None should be resolved by the
- * development team by default."
+ * SETTLED, 16 August 2026: the club has a programme. The Diary keeps its tab
+ * and the four-tab structure stands.
+ *
+ * What that creates is an obligation rather than a feature. A tab promising a
+ * programme has to have one in it: the operating rhythm fills it every day now
+ * that the week is published, and the one-off feed is the club's to keep
+ * current. An events table nobody writes to would make this tab emptier than no
+ * tab would have been, which is the failure §7.3 warns about.
  *
  * ===========================================================================
  * WHY THE STATE IS IN THE URL
@@ -140,6 +143,17 @@ export default async function DiaryPage({
     fixtures: [],
   });
 
+  /* Declared before the strip that calls it. A `const` arrow referenced above
+     its own declaration is a temporal dead zone error at request time, which no
+     type check catches. */
+  const hrefFor = (next: { day?: string; mode?: DiaryMode }) => {
+    const query = new URLSearchParams();
+    query.set("day", next.day ?? selectedKey);
+    const nextMode = next.mode ?? mode;
+    if (nextMode !== "programme") query.set("mode", nextMode);
+    return `${routes.portalBook}?${query.toString()}`;
+  };
+
   const strip: WeekDay[] = weekFrom(now, STRIP_DAYS).map((date) => {
     const key = lagosDateKey(date);
     const day = week.find((candidate) => candidate.dateKey === key);
@@ -151,18 +165,13 @@ export default async function DiaryPage({
       dayOfMonth: String(parts.day),
       hasProgramme: day ? hasProgramme(day) : false,
       isToday: key === lagosDateKey(now),
+      /* Built here rather than in the strip: a function cannot cross into a
+         client component, and the URL grammar belongs to this page anyway. */
+      href: hrefFor({ day: key }),
     };
   });
 
   const day = week.find((candidate) => candidate.dateKey === selectedKey) ?? null;
-
-  const hrefFor = (next: { day?: string; mode?: DiaryMode }) => {
-    const query = new URLSearchParams();
-    query.set("day", next.day ?? selectedKey);
-    const nextMode = next.mode ?? mode;
-    if (nextMode !== "programme") query.set("mode", nextMode);
-    return `${routes.portalBook}?${query.toString()}`;
-  };
 
   return (
     <>
@@ -176,19 +185,15 @@ export default async function DiaryPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <ModeSwitch
             mode={mode}
-            hrefFor={(nextMode) => hrefFor({ mode: nextMode })}
+            programmeHref={hrefFor({ mode: "programme" })}
+            availabilityHref={hrefFor({ mode: "availability" })}
           />
           <Button href={routes.portalBookNew} variant="primary">
             Book a session
           </Button>
         </div>
 
-        <WeekStrip
-          className="mt-4"
-          days={strip}
-          selectedKey={selectedKey}
-          hrefFor={(dayKey) => hrefFor({ day: dayKey })}
-        />
+        <WeekStrip className="mt-4" days={strip} selectedKey={selectedKey} />
       </Section>
 
       {mode === "programme" ? (

@@ -83,43 +83,65 @@ the Members Portal scope and should be raised on its own.
 
 ---
 
-## The open decision this portal sits on
+## The decision this portal sat on — taken, 16 August 2026
 
-**§7.5 — does the club have a programme?**
+**§7.5 — does the club have a programme? YES.**
 
-> If the club has a programme — a reason to be there on an evening you are not
-> shooting, published in advance — Diary is the hospitality surface and it earns
-> a tab. If the honest answer is *the range is open, come when you like*, then
-> Diary is a date picker wearing a tab, and the correct structure is three tabs
-> and an action.
+The Diary keeps its tab and the four-tab structure stands: TODAY · DIARY ·
+COMPETE · ME · BOOK. The three-tab alternative is not built and is not needed.
 
-The Diary is built as the specification describes it, and the decision is
-registered as `club-programme` rather than taken. §16 is explicit: "None should
-be resolved by the development team by default."
+What the answer creates is an obligation rather than a feature. A tab promising
+a programme has to have one in it. The operating rhythm fills it every day now
+that the week is published; the one-off feed — guest evenings, fixtures,
+closures — is the club's to keep current. An events table nobody writes to makes
+this tab emptier than no tab would have been, which is the failure §7.3 warns
+about.
 
-If the answer turns out to be no, the change is small and local — remove the
-Diary entry from `portalNav` in `src/lib/app-nav.ts` and move the availability
-grid inside the booking flow. Nothing else depends on it.
+**The club's week — 9am to 6pm, every day.**
+
+Declared in `src/content/club-week.ts`, which is where the public site's
+sentence and the portal's rows both come from. `staffed: true` on all seven
+days is an assumption drawn from "open every day", and it is the consequential
+field: an unstaffed period yields no shooting slots at all while still
+publishing to the Diary as club open. If the club's real officer coverage is
+narrower, that is the one line to change.
 
 ---
 
 ## Publishing the club's week
 
-Nothing in this milestone publishes a single hour. The tables arrive empty and
-every screen that depends on them renders one honest sentence, which is P2
-working rather than an omission.
+The week is declared in code and applied by a script — it is **not** written by
+a deploy:
+
+```bash
+npm run db:hours            # show what the database holds, change nothing
+npm run db:hours -- --apply # publish the declared week
+```
+
+It prints before it writes, refuses to guess, and running it twice changes
+nothing the second time. It also reports what still stands between a published
+week and a bookable calendar, because a founder who publishes hours and finds
+nothing bookable deserves to be told why on the spot.
+
+**One thing still does.** `club_settings.session_minutes` is unset, and the
+availability grid divides an opening period into sessions — with no session
+length it produces none, on every day, for every discipline. The portal names
+that specifically rather than reading as a busy club:
+
+> The club has not set how long a session runs, so nothing can be booked yet.
 
 ```sql
--- Sessions and notice. Both null means no slots and the honest sentence.
-update armory.club_settings
-   set session_minutes = 60,
-       booking_lead_time_minutes = 60,
-       table_capacity = 24;
+-- The last value between a published week and a bookable calendar.
+update armory.club_settings set session_minutes = 60;
+```
 
--- One row per stretch of one weekday. 0 = Sunday. Minutes since Lagos midnight.
-insert into armory.opening_hours (id, weekday, opens_minute, closes_minute, staffed, label)
-values (armory.uuidv7(), 4, 9*60, 21*60, true,  'Range and deck'),
-       (armory.uuidv7(), 5, 12*60, 22*60, false, 'Deck and kitchen only');
+Everything else, for reference:
+
+```sql
+-- Notice required, and covers at the tables.
+update armory.club_settings
+   set booking_lead_time_minutes = 60,
+       table_capacity = 24;
 
 -- A one-off. `published` defaults to false so a draft is not a member's screen.
 insert into armory.events (id, kind, title, on_date, starts_minute, ends_minute, published)
@@ -132,7 +154,33 @@ values (armory.uuidv7(), 'closure', 'Closed — public holiday', '2026-10-01', t
 ```
 
 A founder screen for all of this is the obvious next piece of work and is not in
-this milestone. Until it exists, the statements above are the interface.
+this milestone. Until it exists, `npm run db:hours` and the statements above are
+the interface.
+
+---
+
+## Proved against a real database
+
+Not inferred from a type check. A Postgres 16 instance was raised, all nine
+migrations applied, a club bootstrapped, the week published, and every portal
+surface loaded as a signed-in founding member.
+
+| Checked | Result |
+| --- | --- |
+| All nine migrations, including 0008 | applied |
+| `bookings_discipline_matches_type` | refuses a table booking that names a discipline, and a shoot booking that names none |
+| `opening_hours_period_is_ordered` | refuses a period closing before it opens |
+| `opening_hours_weekday_is_a_weekday` | refuses weekday 7 |
+| `events_times_are_absent_or_ordered` | refuses a start with no end |
+| `npm run db:hours -- --apply` | publishes 7 periods, warns that nothing is bookable without a session length |
+| Today, Diary (both modes), Book, Compete, Me | render for a real member |
+
+**It found a defect nothing else would have.** The Diary returned a 500 on every
+request — `WeekStrip` and `ModeSwitch` are client components and the page was
+passing them functions to build hrefs, which cannot cross the server/client
+boundary. Type checking, linting, the build and 915 unit tests were all green
+against it. It is fixed by passing finished hrefs, which is the better shape
+anyway.
 
 ---
 
