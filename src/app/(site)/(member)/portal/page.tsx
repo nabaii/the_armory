@@ -1,244 +1,462 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@/components/layout/PageHeader";
-import { Section } from "@/components/layout/Section";
-import { Body, Caption, Data, H2, H3, Kicker } from "@/components/ui/Text";
-import { Button } from "@/components/ui/Button";
-import { Pending } from "@/components/ui/Pending";
-import { StatementBlock } from "@/components/sections/StatementBlock";
 import Link from "next/link";
-import { getMember } from "@/server/auth/session";
-import { leaguesForMember } from "@/server/leagues/repository";
-import { nextFixture, weekdayName } from "@/server/leagues/fixtures";
+import { getArmoryDb, isArmoryDatabaseConfigured } from "@/db/armory/client";
 import { isDatabaseConfigured } from "@/db/client";
+import { getMember } from "@/server/auth/session";
+import { resolveArmoryMember } from "@/server/armory/member-session";
+import { remediesFor } from "@/server/armory/remedies";
 import {
-  canAppearOnClubLadder,
-  canCaptainLeague,
-  isFullMember,
-} from "@/server/leagues/eligibility";
+  bookingWorthHosting,
+  upcomingBookingsFor,
+  type MemberBooking,
+} from "@/server/armory/member-bookings";
+import { competitiveRecordFor } from "@/server/armory/member-record";
+import { clubOpeningHours } from "@/server/armory/club-policy";
+import { programmeWeek, publishedEvents } from "@/server/armory/programme";
+import type { ProgrammeDay } from "@/domain/programme";
+import { Section } from "@/components/layout/Section";
+import { Body, Caption, H2, H3, Kicker } from "@/components/ui/Text";
+import { Button } from "@/components/ui/Button";
+import { RemedyStack } from "@/components/member/RemedyCard";
+import { ScoreLine } from "@/components/member/ScoreLine";
+import { StatusPill } from "@/components/member/StatusPill";
+import { ProgrammeLine } from "@/components/member/ProgrammeLine";
+import {
+  addDays,
+  formatTime,
+  formatWeekdayDate,
+  isSameLagosDay,
+} from "@/lib/time";
 import { routes } from "@/lib/site";
 
-/* ============================================================================
-   THE MEMBER HOME.
+/**
+ * TODAY — Members Portal Design Specification §6.
+ *
+ *   "A single vertical stack of cards. No tabs within tabs, no horizontal
+ *    carousels, no dashboard grid. The member scrolls once and has seen
+ *    everything the club has to say to them."
+ *
+ * ===========================================================================
+ * §6.3 — THE ORDER IS FIXED, NOT COMPUTED
+ *
+ *   "Ordering cards by computed urgency was proposed and rejected. A home
+ *    screen that reshuffles between visits is never learned, and a member who
+ *    has learned where the next-booking card sits can find it without reading.
+ *    The order is: action required, next booking, tonight at the club, live
+ *    competition, last round. Cards absent from a given member's state
+ *    collapse; the surviving cards do not reorder."
+ *
+ * That is why this file is a flat sequence of five blocks with no sort anywhere
+ * in it. The temptation to promote a card — an expiring licence to the top, a
+ * fixture on the day it is due — is the temptation §6.3 is refusing.
+ *
+ * ===========================================================================
+ * §6.4 — THE EMPTY STATES ARE THE POINT
+ *
+ *   "A member with no booking, no competition and no action items must still
+ *    see the club's week. A blank Today screen teaches the member not to open
+ *    the application, which is the single outcome the entire design is arranged
+ *    to prevent. The Tonight at the club card therefore has no empty state —
+ *    where nothing is scheduled tonight, it shows the week ahead."
+ *
+ * ===========================================================================
+ * P3 — WHY THIS SCREEN EXISTS WHEN THE MEMBER IS NOT SHOOTING
+ *
+ * Shooting is infrequent. Four of the five cards are for the weeks in between:
+ * what is on, where the member's league stands, what they last shot. Only one
+ * of them is about a session they have booked.
+ */
 
-   ===========================================================================
-   THIS PAGE OPENS ON A COMMITMENT, NOT A SCOREBOARD
+export const metadata: Metadata = { title: "Today" };
 
-   The Brief is unambiguous about what actually drives return visits: "the
-   engine is therefore not the leaderboard — it is social obligation. People
-   return because they told a friend they would be there. Design for the group,
-   not the individual."
+export const dynamic = "force-dynamic";
 
-   So the first thing a member sees is their next round and who else is in it.
-   Standings sit below. A ladder is a scoreboard; a fixture is a promise to
-   someone, and the promise is the product.
+/** How far the fallback week looks when nothing is on tonight. §6.4. */
+const WEEK_AHEAD_DAYS = 7;
 
-   Everything league-shaped here is scaffolded until Workstreams 8-10 build it.
-   The structure is deliberate rather than placeholder: it fixes the hierarchy
-   now, while it is cheap to argue about.
-   ========================================================================= */
-
-export const metadata: Metadata = { title: "Your club" };
-
-export default async function PortalPage() {
-  /* The layout has already required a member; this is the same request's
-     cached read, not a second authentication. */
+export default async function TodayPage() {
   const member = await getMember();
   if (!member) return null;
 
-  const fullMember = isFullMember(member.status);
+  const now = new Date();
+  const resolution = await resolveArmoryMember();
+  const configured = isDatabaseConfigured() && isArmoryDatabaseConfigured();
 
-  /* Guarded rather than assumed: the portal is reachable only with a session,
-     which needs a database — but a misconfiguration should degrade to an empty
-     list rather than a stack trace on a member's home page. */
-  const summaries = isDatabaseConfigured() ? await leaguesForMember(member.id) : [];
+  /**
+   * A person signed in with no membership behind them.
+   *
+   * §3.1 makes applicant, guest and member states of a person, and this account
+   * is very likely the club's warmest prospect — a former guest. The honest
+   * screen invites them rather than showing them an empty members' home, and
+   * §3.2 is the reason it is worth doing well: "someone brought four times by
+   * four different members is the person most likely to join".
+   */
+  if (resolution.state !== "member") {
+    return <NotYetAMember state={resolution.state} />;
+  }
+
+  const armory = resolution.member;
+  const db = getArmoryDb();
+
+  const [remedies, bookings, record, openingHours] = await Promise.all([
+    remediesFor(db, armory, now),
+    upcomingBookingsFor(db, {
+      membershipId: armory.membershipId,
+      personId: armory.personId,
+      from: now,
+      limit: 3,
+    }),
+    competitiveRecordFor({ personId: armory.personId, memberId: member.id }),
+    clubOpeningHours(db),
+  ]);
+
+  const events = configured
+    ? await publishedEvents(db, { from: now, to: addDays(now, WEEK_AHEAD_DAYS) })
+    : [];
+
+  /* Fixtures are weeks, never dates (Leagues Spec §8), so they do not land on a
+     day and are not merged into the programme. They appear on their own card
+     below, where "week 3, still to shoot" is the whole fact. */
+  const week = programmeWeek({
+    from: now,
+    days: WEEK_AHEAD_DAYS,
+    openingHours,
+    events,
+    fixtures: [],
+  });
+
+  const today = week[0];
+  const next = bookings[0] ?? null;
+  const toHost =
+    armory.tier.canHost && armory.allowance.remaining > 0
+      ? bookingWorthHosting(bookings)
+      : null;
+
+  const lastRound = record.shooting.mostRecent;
+  const bestForFormat = lastRound
+    ? record.shooting.bests.find(
+        (best) => best.formatLabel === lastRound.formatLabel,
+      )
+    : undefined;
 
   return (
     <>
-      <PageHeader
-        ground={fullMember ? "teal" : "soffit"}
-        kicker="Your club"
-        title={greeting(member.displayName)}
-        lead={
-          fullMember
-            ? "Your next round, your leagues, and where you stand."
-            : "Your next round and your leagues. The club ladder is for members."
-        }
-      />
+      {/* ============================================================ 1 of 5
+          ACTION REQUIRED — §6.2. One component, in a loop, rendering whatever
+          the capability service hands back. Renders nothing when there is
+          nothing to say: a heading reading "nothing needs your attention" over
+          blank space is a club filling a screen with its own reassurance. */}
+      {remedies.length > 0 && (
+        <Section ground="chalk" rhythm="tight">
+          <Kicker className="mb-2">Needs you</Kicker>
+          <RemedyStack items={remedies} />
+        </Section>
+      )}
 
-      {/* ------------------------------------------- 1. YOUR LEAGUES & ROUNDS
-          The commitment first. From the Brief: "the engine is not the
-          leaderboard — it is social obligation." A member should learn when
-          they are next expected before they learn where they are ranked. */}
+      {/* ============================================================ 2 of 5
+          NEXT BOOKING. */}
       <Section ground="chalk" rhythm="default">
-        <Kicker className="mb-2">Your leagues</Kicker>
-
-        {summaries.length === 0 ? (
+        <Kicker className="mb-2">Your next session</Kicker>
+        {next ? (
+          <NextBooking booking={next} now={now} />
+        ) : (
           <>
-            <H2>Nothing on yet.</H2>
+            <H2>Nothing booked.</H2>
             <Body muted className="mt-2 max-w-[68ch]">
-              A league is four friends, one round each per week, over six
-              weeks. Shoot yours whenever suits you — the week is the fixture,
-              not the evening. The standings look after themselves.
+              The club&rsquo;s week is below. When you know which evening suits,
+              book it — you can add whoever is coming with you at the same time.
             </Body>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {canCaptainLeague(member.status) && (
-                <Button href={routes.leagueNew} variant="primary">
-                  Start a league
-                </Button>
-              )}
-              <Button
-                href={routes.leagueJoin}
-                variant={canCaptainLeague(member.status) ? "secondary" : "primary"}
-              >
-                Join with a code
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <H2>When you are next expected.</H2>
-            <ul className="mt-6 flex flex-col gap-4">
-              {summaries.map(({ league, season, playerCount, roundsPlayed }) => {
-                /* Weeks, never dates. Leagues Spec §8: "Show week numbers,
-                   not dates." A dated table of named members is a record of who
-                   was in the building and when. */
-                const next = nextFixture({
-                  roundsSubmitted: roundsPlayed,
-                  seasonWeeks: season.roundCount,
-                });
-
-                return (
-                  <li
-                    key={league.id}
-                    className="border-t border-[var(--rule)]/30 pt-3"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                      <H3>
-                        <Link
-                          href={routes.league(league.id)}
-                          className="no-underline hover:underline"
-                        >
-                          {league.name}
-                        </Link>
-                      </H3>
-                      <Caption>
-                        {playerCount} {playerCount === 1 ? "player" : "players"}
-                      </Caption>
-                    </div>
-
-                    {next.status === "season-complete" ? (
-                      <Body muted className="mt-1">
-                        Season complete — all {season.roundCount} weeks are in.
-                      </Body>
-                    ) : (
-                      <Body className="mt-1">
-                        <Data muted={false}>{next.fixture.label}</Data>
-                        <span className="text-[var(--ink-muted)]">
-                          {" — still to shoot. Most play "}
-                          {weekdayName(league.anchorWeekday)}.
-                        </span>
-                      </Body>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-
-            <div className="mt-6 flex flex-wrap gap-2">
-              {canCaptainLeague(member.status) && (
-                <Button href={routes.leagueNew} variant="secondary">
-                  Start another league
-                </Button>
-              )}
-              <Button href={routes.leagueJoin} variant="secondary">
-                Join with a code
-              </Button>
-            </div>
-          </>
-        )}
-      </Section>
-
-      {/* ------------------------------------------------ 3. THE CLUB LADDER
-          Members only — "members appear on the persistent season-long club
-          ladder". This is the sharpest members-only privilege, so the
-          non-member view states it plainly rather than hiding the section. */}
-      <Section ground={canAppearOnClubLadder(member.status) ? "teal" : "chalk"} rhythm="default">
-        <Kicker className="mb-2" muted={!canAppearOnClubLadder(member.status)}>
-          The club ladder
-        </Kicker>
-        {canAppearOnClubLadder(member.status) ? (
-          <>
-            <H2>Where you stand.</H2>
-            <div className="mt-4">
-              <Pending label="Club ladder — season-long standings (Workstream 9)" />
-            </div>
-          </>
-        ) : (
-          <>
-            <H2>The ladder is for members.</H2>
-            <Body muted className="mt-2">
-              Your scores count in your own league. The season-long club ladder,
-              priority on league slots and entry to season events come with
-              membership.
-            </Body>
-            <Button href={routes.membership} variant="primary" className="mt-4">
-              What membership includes
+            <Button href={routes.portalBookNew} variant="primary" className="mt-4">
+              Book a session
             </Button>
           </>
         )}
-      </Section>
 
-      {/* ------------------------------------------------------ 4. ACCOUNT */}
-      <Section ground="chalk" rhythm="default">
-        <Kicker className="mb-2">Your details</Kicker>
-        <H2>What we hold.</H2>
-
-        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <dt>
-              <H3>Display name</H3>
-            </dt>
-            <dd className="mt-1 text-body text-[var(--ink-muted)]">
-              {member.displayName}
-              <Caption className="mt-1">
-                This is the only name that appears on standings. It is not your
-                real name unless you choose to make it so.
-              </Caption>
-            </dd>
+        {/* §10's second placement. Suggestive, and attached to a specific
+            booking rather than to the member — "never repeated for the same
+            booking" is a property of the prompt, so it names the session. */}
+        {toHost && (
+          <div className="mt-6 border-t border-[var(--rule)]/30 pt-3">
+            <H3>Bringing anyone on {formatWeekdayDate(toHost.slotStart)}?</H3>
+            <Body muted className="mt-1">
+              You have {armory.allowance.remaining}{" "}
+              {armory.allowance.remaining === 1 ? "guest visit" : "guest visits"}{" "}
+              included. Add them now and they get their own link.
+            </Body>
+            <Link
+              href={routes.portalBook}
+              className="mt-2 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
+            >
+              Add a guest
+            </Link>
           </div>
-          <div>
-            <dt>
-              <H3>Email</H3>
-            </dt>
-            <dd className="mt-1 text-body text-[var(--ink-muted)]">
-              {member.email}
-              <Caption className="mt-1">
-                Used to sign you in, and never shown to other members.
-              </Caption>
-            </dd>
-          </div>
-        </dl>
-
-        <div className="mt-6">
-          <Pending label="Change display name, export or erase your data (Workstream 7 follow-up / NDPA)" />
-        </div>
+        )}
       </Section>
 
-      <Section ground="charred" rhythm="default">
-        <StatementBlock
-          kicker="Leagues"
-          statement="Anyone can play. Members are the club."
-          support="Leagues open after the club does, once there are enough members for a season to be worth playing."
-        />
+      {/* ============================================================ 3 of 5
+          TONIGHT AT THE CLUB — §6.4: this card has NO empty state. Where
+          nothing is on tonight it shows the week ahead, because a blank Today
+          teaches the member not to open the application. */}
+      <Section ground="soffit" rhythm="default">
+        <Kicker className="mb-2">At the club</Kicker>
+        <TonightOrTheWeek today={today} week={week} />
       </Section>
+
+      {/* ============================================================ 4 of 5
+          COMPETITION. §15 holds LIVE standings for Phase 1.5 — this is the
+          commitment rather than the scoreboard, which is the right half to
+          ship first: "the engine is not the leaderboard, it is social
+          obligation. People return because they told a friend they would be
+          there." */}
+      {record.leagues.length > 0 && (
+        <Section ground="chalk" rhythm="default">
+          <Kicker className="mb-2">Your leagues</Kicker>
+          <ul className="flex flex-col gap-3">
+            {record.leagues.map((league) => (
+              <li key={league.id} className="border-t border-[var(--rule)]/30 pt-3">
+                <H3>
+                  <Link
+                    href={routes.league(league.id)}
+                    className="no-underline hover:underline"
+                  >
+                    {league.name}
+                  </Link>
+                </H3>
+                <Body muted className="mt-1">
+                  {league.nextFixtureLabel
+                    ? `${league.nextFixtureLabel} — still to shoot. Most play ${league.anchorWeekdayName}.`
+                    : `Season complete — all ${league.seasonWeeks} weeks are in.`}
+                </Body>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {/* ============================================================ 5 of 5
+          LAST ROUND. */}
+      {lastRound && (
+        <Section ground="chalk" rhythm="default">
+          <Kicker className="mb-2">Your last round</Kicker>
+          <ScoreLine
+            score={{
+              reads: lastRound.reads,
+              discipline: lastRound.discipline,
+              formatLabel: lastRound.formatLabel,
+              capturedAt: lastRound.capturedAt,
+              relation: bestForFormat?.trend ?? null,
+              isPersonalBest: bestForFormat?.reads === lastRound.reads,
+              superseded: lastRound.superseded,
+            }}
+          />
+          <Link
+            href={routes.portalShooting}
+            className="mt-3 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
+          >
+            Your whole record
+          </Link>
+        </Section>
+      )}
     </>
   );
 }
 
-/**
- * Plain and unexcitable. "Welcome back!" is the register this brand explicitly
- * does not use — no hype, no exclamation marks (Guidelines §9).
- */
-function greeting(displayName: string): string {
-  return `${displayName}.`;
+/* ============================================================================
+   THE NEXT-BOOKING CARD
+   ========================================================================= */
+
+function NextBooking({ booking, now }: { booking: MemberBooking; now: Date }) {
+  const amendable = booking.slotStart > now;
+
+  /* §14: "Guest link abandonment — a guest half-completes their link. Nobody
+     notices until arrival. Flagged to the HOST, never to the guest." */
+  const waiting = booking.companions.filter(
+    (companion) =>
+      companion.isGuest &&
+      companion.invitationStatus !== "completed" &&
+      companion.invitationStatus !== "attended",
+  );
+
+  return (
+    <>
+      <H2>
+        {isSameLagosDay(booking.slotStart, now)
+          ? "Today"
+          : formatWeekdayDate(booking.slotStart)}
+        , {formatTime(booking.slotStart)}
+      </H2>
+
+      <Body muted className="mt-1">
+        {purposeLine(booking)}
+      </Body>
+
+      {booking.companions.length > 0 && (
+        <Body className="mt-2">
+          {/* Named, never counted — §10. */}
+          With {listNames(booking.companions.map((companion) => companion.name))}.
+        </Body>
+      )}
+
+      {waiting.length > 0 && (
+        <div className="mt-3">
+          <StatusPill status="attention" />
+          <Body muted className="mt-1">
+            {waiting.length === 1
+              ? `${waiting[0].name} has not finished their guest form yet.`
+              : `${waiting.length} of your guests have not finished their forms yet.`}{" "}
+            They will be held at the desk until they do.
+          </Body>
+        </div>
+      )}
+
+      {amendable && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button href={routes.portalBook} variant="secondary">
+            Change or cancel
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** What the booking is for, in the member's words rather than the schema's. */
+function purposeLine(booking: MemberBooking): string {
+  switch (booking.bookingType) {
+    case "shoot":
+      return booking.discipline ?? "On the range";
+    case "both":
+      return `${booking.discipline ?? "On the range"} · and a table`;
+    case "table":
+      return "A table";
+    case "spectate":
+      return "Watching";
+  }
+}
+
+/** Ada · Ada and Tunde · Ada, Tunde and Bisi. */
+function listNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/* ============================================================================
+   TONIGHT, OR THE WEEK — §6.4
+   ========================================================================= */
+
+function TonightOrTheWeek({
+  today,
+  week,
+}: {
+  today: ProgrammeDay | undefined;
+  week: readonly ProgrammeDay[];
+}) {
+  if (today && today.entries.length > 0) {
+    return (
+      <>
+        <H2>{today.closed ? "Closed today." : "Today."}</H2>
+        <ul className="mt-4 flex flex-col gap-3">
+          {today.entries.map((entry, index) => (
+            <li key={`${entry.title}-${index}`}>
+              <ProgrammeLine entry={entry} />
+            </li>
+          ))}
+        </ul>
+        <Link
+          href={routes.portalBook}
+          className="mt-4 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
+        >
+          The whole week
+        </Link>
+      </>
+    );
+  }
+
+  /* Nothing on today. §6.4 forbids an empty state here, so the card shows the
+     next days that DO have something — and only falls through to the honest
+     sentence when the club has published nothing at all. */
+  const ahead = week.filter((day) => day.entries.length > 0).slice(0, 3);
+
+  if (ahead.length === 0) {
+    /**
+     * P2. The club has published no opening hours and no events, so this is
+     * what the screen says — one sentence, and no interface pretending there is
+     * something to look at.
+     *
+     * It is written as a fact about the club rather than an apology, and it
+     * does not suggest the member try again later: they cannot make it true.
+     */
+    return (
+      <>
+        <H2>The club has not published its week yet.</H2>
+        <Body muted className="mt-2 max-w-[68ch]">
+          Opening hours and what is on will appear here as soon as they are set.
+        </Body>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <H2>Nothing on today. This week:</H2>
+      <ul className="mt-4 flex flex-col gap-4">
+        {ahead.map((day) => (
+          <li key={day.dateKey} className="border-t border-[var(--rule)]/30 pt-3">
+            <H3>{formatWeekdayDate(day.date)}</H3>
+            <ul className="mt-2 flex flex-col gap-2">
+              {day.entries.map((entry, index) => (
+                <li key={`${entry.title}-${index}`}>
+                  <ProgrammeLine entry={entry} />
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      <Link
+        href={routes.portalBook}
+        className="mt-4 inline-block text-body font-display font-bold underline decoration-1 underline-offset-4"
+      >
+        The whole week
+      </Link>
+    </>
+  );
+}
+
+/* ============================================================================
+   THE PERSON WHO IS NOT A MEMBER
+   ========================================================================= */
+
+function NotYetAMember({ state }: { state: "signed_out" | "not_linked" | "no_membership" }) {
+  return (
+    <Section ground="chalk" rhythm="default">
+      <Kicker className="mb-2">Your club</Kicker>
+      {state === "no_membership" ? (
+        <>
+          <H2>The club knows you.</H2>
+          <Body muted className="mt-2 max-w-[68ch]">
+            You have a record with us, and any rounds you have shot here are
+            already against your name. Membership is what turns that into a
+            standing, a diary and guests of your own.
+          </Body>
+          <Body muted className="mt-2 max-w-[68ch]">
+            <Caption>
+              Your visits so far are on file, whoever brought you.
+            </Caption>
+          </Body>
+        </>
+      ) : (
+        <>
+          <H2>You are signed in.</H2>
+          <Body muted className="mt-2 max-w-[68ch]">
+            Your leagues and your scores are here. Booking, guests and the
+            club&rsquo;s diary come with membership.
+          </Body>
+        </>
+      )}
+      <Button href={routes.membership} variant="primary" className="mt-4">
+        What membership includes
+      </Button>
+    </Section>
+  );
 }
