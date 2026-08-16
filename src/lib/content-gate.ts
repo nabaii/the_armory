@@ -109,7 +109,8 @@ export const contentGate: GateItem[] = [
   },
   {
     id: "booking-durable-store",
-    label: "Durable booking store — the in-memory store is development only",
+    label:
+      "Durable store for FIRST-VISIT deposits — the in-memory store is development only",
     owner: "Build team",
     resolved: false,
     severity: "blocker",
@@ -119,7 +120,14 @@ export const contentGate: GateItem[] = [
       "not shared and does not survive a restart — two instances would each " +
       "believe a full session had places left, and a paid booking could arrive " +
       "with no matching hold. Swap in the calendar-backed adapter before taking " +
-      "a single real deposit. Registered because this reads as finished code.",
+      "a single real deposit. Registered because this reads as finished code. " +
+      "SCOPE, CORRECTED: this is the PUBLIC first-visit deposit flow only. The " +
+      "Members Portal specification §2.2 lists it as blocking the member Diary " +
+      "and the red action, which is wrong on the facts — member bookings live " +
+      "in armory.bookings and armory.booking_participants, are durable, " +
+      "transactional and state-machined, and were never touched by this store. " +
+      "What blocked the member calendar was opening hours, and drizzle/0008 " +
+      "settled that.",
   },
   {
     id: "email-dns",
@@ -200,6 +208,84 @@ export const contentGate: GateItem[] = [
     owner: "Operations",
     resolved: has(contact.hours),
     severity: "degraded",
+    note:
+      "Two places, one fact. This entry is the SENTENCE on the public site. " +
+      "The member portal reads armory.opening_hours (drizzle/0008), which is " +
+      "the same week expressed as rows — and until those rows exist the " +
+      "availability grid renders one honest sentence and nothing bookable, " +
+      "the red action explains itself, and the Diary shows no week. The " +
+      "column is no longer the blocker; somebody telling the system when the " +
+      "club is open is.",
+  },
+  {
+    id: "club-programme",
+    label: "Does the club have a programme?",
+    owner: "Founder",
+    resolved: false,
+    /**
+     * Degraded rather than blocker, and the distinction is exact: the portal
+     * ships either way. What the answer changes is whether it ships with four
+     * tabs or three.
+     */
+    severity: "degraded",
+    note:
+      "Members Portal §7.5, and §16 calls it the strongest single determinant " +
+      "of whether this portal reads as hospitality or as a booking tool. If " +
+      "the club has a programme — a reason to be there on an evening you are " +
+      "not shooting, published in advance — the Diary is the hospitality " +
+      "surface and earns its tab. If the honest answer is 'the range is open, " +
+      "come when you like', the correct structure is three tabs and an action, " +
+      "with availability living inside the booking flow. This is a commitment " +
+      "to operating the club a particular way. It is NOT an interface decision " +
+      "and must not be taken by the build team by default.",
+  },
+  {
+    id: "table-capacity",
+    label: "How many covers can the club actually seat?",
+    owner: "Operations",
+    resolved: false,
+    severity: "degraded",
+    note:
+      "club_settings.table_capacity is null, which the portal reads as 'table " +
+      "bookings are not open yet' and says so. Deliberately not defaulted to " +
+      "unlimited: that is the value that sells a Friday evening the kitchen " +
+      "cannot serve, which is the hospitality equivalent of double-booking a " +
+      "lane and is exactly as embarrassing in front of a guest. Table booking " +
+      "is Members Portal §16's 'strongly recommended' item — without it the " +
+      "portal inverts the hospitality-first frame in the surface members touch " +
+      "most.",
+  },
+  {
+    id: "spectator-capacity",
+    label: "Does a spectator occupy one of the club's covers?",
+    owner: "Operations",
+    resolved: false,
+    severity: "degraded",
+    note:
+      "Members Portal §7.4 says a spectator 'consumes neither, but does consume " +
+      "a seat and a name on the arrivals list'. The name on the arrivals list " +
+      "is unconditional and is built. Whether they also occupy a cover is a " +
+      "question about how the club seats people, so `occupancyOf` returns zero " +
+      "and this is registered rather than guessed. Zero fails safe: a " +
+      "spectator who turns out to need a seat is a seat found on the night, " +
+      "where a guessed count silently refuses bookings the club would have " +
+      "taken and nobody ever sees it happen.",
+  },
+  {
+    id: "offline-credential",
+    label: "Founder-facing revocation control, before any credential is cached",
+    owner: "Build team",
+    resolved: false,
+    severity: "blocker",
+    note:
+      "Members Portal §9.2: 'Cache nothing until revocation exists.' The " +
+      "security review names a founder-facing revocation control as a launch " +
+      "blocker, and a cached membership card with a 24-hour life is only safe " +
+      "if there is something to race against it. Until the control ships the " +
+      "membership card is ONLINE-ONLY — which is how it is built, and the " +
+      "screen says so rather than failing quietly at reception. The time-to- " +
+      "live itself is a security posture decision (§16 recommends 24 hours), " +
+      "not a technical one.",
   },
   {
     id: "legal",

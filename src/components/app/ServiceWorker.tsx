@@ -21,6 +21,24 @@ import { useEffect } from "react";
  * A service worker in development serves the last build's assets back to you
  * with total confidence, and the resulting "my change did nothing" is one of
  * the more expensive hours in web development. `next dev` has no use for it.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE BUILD ID IS IN THE URL
+ *
+ * Members Portal §13.5 requires "a version check on every application open, and
+ * a forced update path for breaking changes. A member should never be told to
+ * clear their browser cache."
+ *
+ * Registering `/sw.js?v=<build>` is that check, performed by the browser rather
+ * than by code of ours: a changed script URL is a different registration, so
+ * every application open compares it, and the worker reads the same value to
+ * name its caches. The alternative it replaces was a constant inside sw.js that
+ * somebody had to remember to bump — which fails silently, on the one deploy
+ * that was in a hurry, and strands members on an old shell against a changed
+ * server.
+ *
+ * `NEXT_PUBLIC_BUILD_ID` is set by the deploy; the fallback keeps registration
+ * working where it is not, at the cost of sharing one cache generation.
  */
 export function ServiceWorker() {
   useEffect(() => {
@@ -32,7 +50,10 @@ export function ServiceWorker() {
          means no offline support and no install prompt; it does not mean the
          website is broken, and a console error on every load of a private
          members' site is noise the founder does not need. */
-      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+      const version = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
+      navigator.serviceWorker
+        .register(`/sw.js?v=${encodeURIComponent(version)}`)
+        .catch(() => undefined);
     };
 
     if (document.readyState === "complete") {

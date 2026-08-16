@@ -37,10 +37,40 @@
    anything added to the site that carries personal data must be added here.
    ========================================================================= */
 
-/* Bump on any change to this file or to PRECACHE. Old caches are deleted on
-   activate, so the version is what makes a deploy take effect rather than
-   leaving members on last month's shell. */
-const VERSION = "v1";
+/**
+ * THE DEPLOYED BUILD, NOT A NUMBER SOMEBODY REMEMBERS TO BUMP.
+ *
+ * Members Portal §13.5:
+ *
+ *   "A stale service worker serving an old shell against a changed API is the
+ *    most common way a progressive web application breaks in production and the
+ *    hardest to diagnose from support messages. Required: version-pinned
+ *    caches, separate cache namespaces for the public and member shells, a
+ *    version check on every application open, and a forced update path for
+ *    breaking changes. A MEMBER SHOULD NEVER BE TOLD TO CLEAR THEIR BROWSER
+ *    CACHE. If that instruction is ever necessary, the release process failed."
+ *
+ * This was a hand-bumped `"v1"`, and a hand-bumped constant is the release
+ * process §13.5 says must not exist: the failure is silent, it happens on the
+ * one deploy somebody was in a hurry for, and its symptom is a member on last
+ * month's shell talking to this month's server.
+ *
+ * So the version now arrives in the registration URL — `/sw.js?v=<build>` —
+ * which ServiceWorker.tsx builds from the deployed build id. Two things follow,
+ * and both are §13.5's requirements rather than conveniences:
+ *
+ *   · THE VERSION CHECK ON EVERY OPEN is the browser's. A changed script URL
+ *     is a different registration, so the browser fetches and compares on every
+ *     application open, with no code of ours to get wrong.
+ *   · THE FORCED UPDATE PATH is `skipWaiting` plus `clients.claim` below,
+ *     which were already here. What was missing was something to trigger them
+ *     reliably.
+ *
+ * Falls back to `dev` when there is no parameter — a worker registered by hand,
+ * or an older client whose HTML predates this change. It still installs and
+ * still works; it simply shares one cache generation until the next open.
+ */
+const VERSION = new URL(self.location.href).searchParams.get("v") || "dev";
 const SHELL_CACHE = `armory-shell-${VERSION}`;
 const PAGE_CACHE = `armory-pages-${VERSION}`;
 
@@ -88,6 +118,38 @@ const PRECACHE = ["/offline", "/icons/icon-192.png"];
  * that question alone.
  */
 const NEVER_CACHE = ["/portal", "/sign-in", "/api/", "/screen", "/console"];
+
+/**
+ * §13.3 — "NOT ALL DATA MAY BE TREATED ALIKE", RECONCILED WITH THIS WORKER
+ *
+ * The Members Portal specification sets six caching policies by data class:
+ * shell cache-first, programme stale-while-revalidate, lane availability
+ * network-only, allowance and balance network-first, score history
+ * stale-while-revalidate, membership credential cache-first with a hard
+ * time-to-live.
+ *
+ * Five of the six resolve to NETWORK-ONLY here, and that is stricter rather
+ * than weaker. The reason is §13.2: the portal has no client-side data layer.
+ * Every one of those classes arrives inside a server-rendered HTML document
+ * that also carries the member's name, number and standing — there is no
+ * response containing only the programme, or only a balance, for a policy to
+ * apply to. Caching the document to get stale-while-revalidate on the
+ * programme would cache the member's whole screen, and `(member)/layout.tsx`
+ * is explicit about what that costs: "a cached portal page is one member's data
+ * served to another", on a device that is shared, lent, sold and stolen.
+ *
+ * The sixth — the membership credential — is the one the specification most
+ * wants cached, and §9.2 forbids it until a founder-facing revocation control
+ * ships: "a cached credential with a twenty-four hour life is only safe if
+ * there is something to race against it." It is registered in the outstanding
+ * list as `offline-credential`.
+ *
+ * When that control lands, the credential should arrive as its own JSON
+ * response on its own path — NOT as part of a portal page — and that path is
+ * what gets a cache-first entry with a hard time-to-live. Adding a portal HTML
+ * route to a cache to achieve it would trade a member's whole screen for one
+ * card.
+ */
 
 const isNeverCached = (pathname) =>
   NEVER_CACHE.some((p) => pathname === p || pathname.startsWith(p));
