@@ -61,8 +61,43 @@
    /sync/ is network-only here, forever.
    ========================================================================= */
 
-/* Bump on any change to this file or to either precache list. */
-const VERSION = "v2";
+/**
+ * THE DEPLOY'S OWN ID, READ OFF THIS SCRIPT'S URL.
+ *
+ * ===========================================================================
+ * THIS WAS A HAND-BUMPED CONSTANT, AND IT FAILED EXACTLY AS PREDICTED
+ *
+ * It read `const VERSION = "v2"`, with a comment asking whoever edited this
+ * file to remember to bump it. next.config.ts had already been through three
+ * iterations of that mistake and wrote the epitaph for it:
+ *
+ *   "A constant `v1` inside sw.js, bumped by hand. Fails on the deploy somebody
+ *    was in a hurry for, and the symptom is a member on last month's shell
+ *    talking to this month's server."
+ *
+ * The members' worker was fixed to derive its version from the registration
+ * URL. This one was not, and it produced precisely that symptom on the desk: a
+ * tablet holding the `v2` shell from an earlier deploy, whose cached HTML
+ * pointed at hashed CSS and JS filenames the server no longer had. The document
+ * rendered, every asset it referenced 404'd, and the officer got the desk's
+ * content with none of its layout — text stacked on top of itself.
+ *
+ * It cannot be discovered by testing a deploy either, because a fresh device
+ * has no stale cache to serve. It only appears on the devices that have been
+ * running longest, which on this product are the ones bolted to the counter.
+ *
+ * ===========================================================================
+ * THE FALLBACK IS THE OLD CONSTANT, DELIBERATELY
+ *
+ * `?v=` is supplied by `ConsoleServiceWorker`. If it is ever absent — an
+ * unversioned registration, a worker fetched by hand — this lands back on the
+ * value it used to hardcode, so an unversioned install shares one cache rather
+ * than minting a new one per page load. Unlike the members' worker it does not
+ * fall back to "dev": on a shared instrument, a cache name that changes on
+ * every open would re-download the shell on every boot, and §2's one-second
+ * cold start is measured on a tablet with the network unplugged.
+ */
+const VERSION = new URL(self.location.href).searchParams.get("v") || "v2";
 const SHELL_CACHE = `armory-console-shell-${VERSION}`;
 
 /**
@@ -127,9 +162,30 @@ self.addEventListener("install", (event) => {
       /* Individually, and failures ignored. One missing icon is cosmetic. */
       await Promise.allSettled(OPTIONAL_PRECACHE.map((url) => cache.add(url)));
 
-      /* Deliberately not caught. See CRITICAL_PRECACHE: if the shell cannot be
-         stored then this worker must not replace one that already has it. */
-      await cache.addAll(CRITICAL_PRECACHE);
+      /**
+       * Fetched with `cache: "reload"` rather than through `cache.addAll`.
+       *
+       * `addAll` fetches through the HTTP cache, and the shell is a static
+       * document the browser is entitled to hold. On the update that is meant
+       * to REPLACE a stale shell that is the one request that must not be
+       * served from a stale copy — the worker would dutifully re-store the
+       * exact HTML it was installed to get rid of, and the desk would come back
+       * still pointing at assets the deploy no longer has.
+       *
+       * Failure still propagates, which is what `addAll` was chosen for:
+       * `Promise.all` rejects on the first bad response, install fails, and
+       * this worker does not replace one that already holds a working shell.
+       * See CRITICAL_PRECACHE.
+       */
+      await Promise.all(
+        CRITICAL_PRECACHE.map(async (url) => {
+          const response = await fetch(url, { cache: "reload" });
+          if (!response.ok) {
+            throw new Error(`console precache ${url} → ${response.status}`);
+          }
+          await cache.put(url, response);
+        }),
+      );
 
       /* Take over immediately. A desk tablet that is mid-shift should not be
          running last week's shell because nobody closed the tab — these

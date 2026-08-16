@@ -35,12 +35,33 @@ export function ConsoleServiceWorker() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
+    /**
+     * The deploy's id, in the script URL.
+     *
+     * A service worker is only replaced when its SCRIPT changes, and
+     * `/console/sw.js` is byte-identical across most deploys — so the browser
+     * kept the installed worker, which kept serving the shell HTML it had
+     * precached, which referenced hashed assets the new deploy no longer
+     * served. The desk rendered its own content with none of its layout.
+     *
+     * `?v=<build>` makes the URL itself change on every deploy, which is the
+     * one signal a browser acts on. This is the same mechanism the members'
+     * worker has used since `NEXT_PUBLIC_BUILD_ID` was introduced; the desk
+     * simply never got it. See the note at the top of `public/console/sw.js`.
+     */
+    const version = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
+
     navigator.serviceWorker
       /* The scope is implied by the script's path and stated anyway. A future move
          of this file would otherwise silently widen the scope to `/`, which would
          put the console's cache-first policy in front of the member portal — the one
-         outcome the two-worker design exists to make impossible. */
-      .register("/console/sw.js", { scope: "/console/" })
+         outcome the two-worker design exists to make impossible.
+
+         The query string does not affect scope — that is derived from the path —
+         so versioning the URL cannot widen it. */
+      .register(`/console/sw.js?v=${encodeURIComponent(version)}`, {
+        scope: "/console/",
+      })
       .catch(() => {
         /**
          * Silent, and the desk still works.
