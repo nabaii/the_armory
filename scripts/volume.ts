@@ -173,6 +173,7 @@ function fixture(): DayPack {
           | "guest_shooter"
           | "member_shooter",
         discipline: "25m-pistol",
+        bookingType: "shoot",
         slotStart: new Date(now.getTime() + (i % 8) * 3_600_000).toISOString(),
         hostPersonId: isGuest ? people[i % MEMBERS].id : null,
         invitationId: isGuest ? id("e", i) : null,

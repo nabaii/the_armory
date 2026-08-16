@@ -290,6 +290,7 @@ export async function loadDayPackSource(now: Date): Promise<DayPackSource> {
         sessionId: schema.sessions.id,
         role: schema.bookingParticipants.role,
         discipline: schema.bookings.discipline,
+        bookingType: schema.bookings.bookingType,
         slotStart: instant(schema.bookings.slotStart),
         hostPersonId: hostMembership.personId,
         invitationId: schema.bookingParticipants.guestInvitationId,

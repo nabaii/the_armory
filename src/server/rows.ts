@@ -1,4 +1,5 @@
 import type {
+  BookingType,
   FirearmStatus,
   InvitationStatus,
   LicenceStatus,
@@ -137,7 +138,26 @@ export type ArrivalRow = {
   bookingId: string | null;
   sessionId: string | null;
   role: ParticipantRole;
-  discipline: string;
+  /**
+   * Null where the booking touches no firing line — Members Portal §7.4's
+   * `table` and `spectate`.
+   *
+   * The desk still expects this person, and that is the whole reason the row
+   * exists: "a spectator consumes neither, but does consume a seat and a NAME
+   * ON THE ARRIVALS LIST". A person in the building the desk did not expect is
+   * the failure this prevents, and it does not become less of one because they
+   * are not shooting.
+   */
+  discipline: string | null;
+  /**
+   * What they are here for. Defaults to `shoot` for every booking written
+   * before drizzle/0008, which is what those bookings were.
+   *
+   * Carried so the desk can say "Table" or "Spectating" where there is no
+   * discipline to print. A row that read "—" would make the officer ask, which
+   * is the fifteen seconds P6 exists to protect.
+   */
+  bookingType: BookingType;
   slotStart: InstantString;
   hostPersonId: string | null;
   invitationId: string | null;

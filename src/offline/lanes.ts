@@ -92,9 +92,17 @@ export function laneOccupancy(
  */
 export function lanesFor(
   indexed: IndexedDayPack,
-  discipline: string,
+  /**
+   * Null where the arrival touches no firing line — a table booking or a
+   * spectator (Members Portal §7.4). There is no lane to offer, and none is
+   * offered; `noLaneReason` says so in a sentence rather than leaving the
+   * officer looking at an empty list.
+   */
+  discipline: string | null,
   participations: readonly LocalParticipation[],
 ): LaneOption[] {
+  if (discipline === null) return [];
+
   const occupancy = laneOccupancy(participations);
   const lanes = indexed.lanesByDiscipline.get(discipline) ?? [];
 
@@ -155,8 +163,14 @@ export function suggestLane(options: readonly LaneOption[]): LaneOption | null {
  */
 export function noLaneReason(
   options: readonly LaneOption[],
-  discipline: string,
+  discipline: string | null,
 ): string {
+  /* Not a fault. This person is not shooting, so there is nothing to assign
+     and the officer should check them in without hunting for a free bay. */
+  if (discipline === null) {
+    return "This booking does not use a lane.";
+  }
+
   if (options.length === 0) {
     return `This device has no ${discipline} lanes on file. Sync while there is a connection.`;
   }

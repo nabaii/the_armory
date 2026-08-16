@@ -3,10 +3,14 @@ import { describe, it } from "node:test";
 import {
   UNCONFIGURED_AVAILABILITY,
   availableSlots,
+  availableTables,
   capacityFor,
   emptyReason,
+  emptyTableReason,
   minuteOfDay,
+  occupancyOf,
   slotId,
+  usesLane,
   type AvailabilityPolicy,
   type BookedSlot,
   type LaneInfo,
@@ -44,6 +48,10 @@ const policy = (overrides: Partial<AvailabilityPolicy> = {}): AvailabilityPolicy
       staffed: true,
     },
   ],
+  /* Null by default, matching a club that has not counted its covers. Every
+     table test opts in explicitly, so no lane test can pass by accident on a
+     capacity it never asked for. */
+  tableCapacity: null,
   ...overrides,
 });
 
@@ -168,6 +176,7 @@ describe("existing bookings take positions, not slots", () => {
     slotStart: new Date(startIso),
     slotEnd: new Date(endIso),
     discipline: "pistol",
+    bookingType: "shoot",
     positions,
   });
 
@@ -203,6 +212,7 @@ describe("existing bookings take positions, not slots", () => {
           slotStart: new Date("2026-08-13T08:00:00.000Z"),
           slotEnd: new Date("2026-08-13T09:00:00.000Z"),
           discipline: "rifle",
+          bookingType: "shoot",
           positions: 2,
         },
       ],
@@ -301,5 +311,175 @@ describe("an empty list says why", () => {
 
   it("says nothing when there is nothing wrong", () => {
     assert.equal(emptyReason(policy(), [lane("l-1", "pistol")], "pistol"), null);
+  });
+});
+
+/* ============================================================================
+   BOOKING TYPES AND TABLE CAPACITY — Members Portal §7.4
+
+   "Shoot, table, both and spectate require a booking_type on the booking, and
+    availability must model table capacity separately from lane capacity. A
+    table-only booking consumes no lane; a spectator consumes neither."
+
+   This is the point at which the hospitality-first principle stops being a
+   principle and becomes arithmetic, so it is tested as arithmetic.
+   ========================================================================= */
+
+describe("what a booking consumes", () => {
+  it("charges a shoot to the lanes and nothing to the tables", () => {
+    assert.deepEqual(occupancyOf("shoot", 3), { lane: 3, table: 0 });
+  });
+
+  it("charges a table booking to the covers and NO lane", () => {
+    assert.deepEqual(occupancyOf("table", 2), { lane: 0, table: 2 });
+  });
+
+  it("charges both to both", () => {
+    assert.deepEqual(occupancyOf("both", 2), { lane: 2, table: 2 });
+  });
+
+  it("charges a spectator to neither", () => {
+    /* They still appear on the arrivals list — that is the booking row, not the
+       capacity arithmetic. See the header of `occupancyOf`. */
+    assert.deepEqual(occupancyOf("spectate", 1), { lane: 0, table: 0 });
+  });
+
+  it("knows which types need a discipline", () => {
+    /* The same rule as the CHECK in drizzle/0008. Where these two disagree the
+       database wins and the portal throws, which is the right way round. */
+    assert.equal(usesLane("shoot"), true);
+    assert.equal(usesLane("both"), true);
+    assert.equal(usesLane("table"), false);
+    assert.equal(usesLane("spectate"), false);
+  });
+});
+
+describe("a table booking does not take a firing point", () => {
+  const tableBooking = (positions: number): BookedSlot => ({
+    slotStart: new Date("2026-08-13T08:00:00.000Z"),
+    slotEnd: new Date("2026-08-13T09:00:00.000Z"),
+    discipline: null,
+    bookingType: "table",
+    positions,
+  });
+
+  it("leaves the lane grid untouched", () => {
+    /* The failure this prevents: four people eating on the deck closing the
+       09:00 pistol session. */
+    const result = slots({
+      lanes: [lane("l-1", "pistol", "available", 4)],
+      booked: [tableBooking(4)],
+    });
+
+    const nine = result.find((slot) => slot.id === "2026-08-13T09:00");
+    assert.equal(nine?.taken, 0);
+    assert.equal(nine?.free, 4);
+  });
+
+  it("takes covers from the table grid instead", () => {
+    const result = availableTables({
+      policy: policy({ tableCapacity: 10 }),
+      booked: [tableBooking(4)],
+      now: NOW,
+      days: 1,
+    });
+
+    const nine = result.find((slot) => slot.id === "2026-08-13T09:00");
+    assert.equal(nine?.taken, 4);
+    assert.equal(nine?.free, 6);
+    assert.equal(nine?.discipline, null, "a table is not a discipline");
+  });
+
+  it("counts a `both` booking against the lanes AND the covers", () => {
+    const both: BookedSlot = {
+      slotStart: new Date("2026-08-13T08:00:00.000Z"),
+      slotEnd: new Date("2026-08-13T09:00:00.000Z"),
+      discipline: "pistol",
+      bookingType: "both",
+      positions: 2,
+    };
+
+    const lanes = slots({
+      lanes: [lane("l-1", "pistol", "available", 4)],
+      booked: [both],
+    });
+    const tables = availableTables({
+      policy: policy({ tableCapacity: 10 }),
+      booked: [both],
+      now: NOW,
+      days: 1,
+    });
+
+    assert.equal(lanes.find((s) => s.id === "2026-08-13T09:00")?.taken, 2);
+    assert.equal(tables.find((s) => s.id === "2026-08-13T09:00")?.taken, 2);
+  });
+
+  it("counts a spectator against neither", () => {
+    const spectator: BookedSlot = {
+      slotStart: new Date("2026-08-13T08:00:00.000Z"),
+      slotEnd: new Date("2026-08-13T09:00:00.000Z"),
+      discipline: null,
+      bookingType: "spectate",
+      positions: 2,
+    };
+
+    assert.equal(
+      slots({
+        lanes: [lane("l-1", "pistol", "available", 4)],
+        booked: [spectator],
+      }).find((s) => s.id === "2026-08-13T09:00")?.taken,
+      0,
+    );
+    assert.equal(
+      availableTables({
+        policy: policy({ tableCapacity: 10 }),
+        booked: [spectator],
+        now: NOW,
+        days: 1,
+      }).find((s) => s.id === "2026-08-13T09:00")?.taken,
+      0,
+    );
+  });
+});
+
+describe("the tables keep their own hours", () => {
+  it("offers covers in an UNSTAFFED period", () => {
+    /* P4. The deck can be open on an evening the range is not, and a club whose
+       system could not express that would be a booking tool with a calendar
+       bolted on. */
+    const unstaffed = policy({
+      tableCapacity: 8,
+      openingHours: [
+        {
+          weekday: THURSDAY,
+          opens: minuteOfDay(9),
+          closes: minuteOfDay(12),
+          staffed: false,
+        },
+      ],
+    });
+
+    assert.equal(availableTables({ policy: unstaffed, booked: [], now: NOW, days: 1 }).length, 3);
+    /* And the same period yields no shooting, which is the whole distinction. */
+    assert.deepEqual(slots({ policy: unstaffed }), []);
+  });
+
+  it("offers nothing at all when the club has not counted its covers", () => {
+    /* Null is "not open yet", never "unlimited". Unlimited is the default that
+       sells a Friday evening the kitchen cannot serve. */
+    assert.deepEqual(
+      availableTables({ policy: policy(), booked: [], now: NOW, days: 1 }),
+      [],
+    );
+    assert.match(emptyTableReason(policy()) ?? "", /not open yet/);
+  });
+
+  it("distinguishes no covers from no hours", () => {
+    assert.match(emptyTableReason(policy({ tableCapacity: 0 })) ?? "", /no covers/);
+    assert.match(
+      emptyTableReason({ ...UNCONFIGURED_AVAILABILITY, tableCapacity: 6 }) ?? "",
+      /opening hours/,
+    );
+    assert.equal(emptyTableReason(policy({ tableCapacity: 6 })), null);
   });
 });

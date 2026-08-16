@@ -1,3 +1,4 @@
+import type { BookingType } from "@/domain/enums";
 import { lagosDateKey, lagosInstant, lagosParts } from "@/lib/time";
 
 /**
@@ -67,6 +68,15 @@ export type OpeningPeriod = {
    * the club cannot deliver.
    */
   readonly staffed: boolean;
+  /**
+   * What the club calls this period — "Range and deck", "Deck and kitchen
+   * only". Rendered by the Diary's operating-rhythm feed and never parsed.
+   *
+   * Optional because availability does not need it: an unnamed period is a
+   * perfectly good period and the club should not have to write a label to
+   * open on a Tuesday.
+   */
+  readonly label?: string | null;
 };
 
 export type AvailabilityPolicy = {
@@ -80,6 +90,19 @@ export type AvailabilityPolicy = {
    * member rather than to the range.
    */
   readonly leadTimeMinutes: number;
+  /**
+   * Covers at the tables — Members Portal §7.4.
+   *
+   *   "Availability must model table capacity separately from lane capacity.
+   *    A table-only booking consumes no lane."
+   *
+   * NULL MEANS THE CLUB HAS NOT COUNTED ITS COVERS, and that is treated as
+   * "table bookings are not open yet" rather than as unlimited. Unlimited is
+   * the tempting default and it is the one that sells a Friday evening the
+   * kitchen cannot serve — the hospitality equivalent of double-booking a lane,
+   * and exactly as embarrassing in front of a guest (P5).
+   */
+  readonly tableCapacity: number | null;
 };
 
 /**
@@ -95,6 +118,7 @@ export const UNCONFIGURED_AVAILABILITY: AvailabilityPolicy = {
   sessionMinutes: 60,
   openingHours: [],
   leadTimeMinutes: 60,
+  tableCapacity: null,
 };
 
 /* ============================================================================
@@ -114,23 +138,81 @@ export type LaneInfo = {
 export type BookedSlot = {
   readonly slotStart: Date;
   readonly slotEnd: Date;
-  readonly discipline: string;
+  /** Null where the booking touches no firing line — §7.4's table and spectate. */
+  readonly discipline: string | null;
+  readonly bookingType: BookingType;
   /**
-   * How many firing positions this booking occupies — the host plus their
-   * guests. Not one per booking: a member bringing two guests takes three
-   * positions, and counting bookings instead of people is how a range ends up
-   * double-booked on a Saturday.
+   * How many PEOPLE this booking brings — the host plus their guests. Not one
+   * per booking: a member bringing two guests takes three positions, and
+   * counting bookings instead of people is how a range ends up double-booked on
+   * a Saturday.
+   *
+   * What those people consume depends on the booking type. `occupancyOf` below
+   * is the only place that mapping lives.
    */
   readonly positions: number;
 };
+
+/* ============================================================================
+   WHAT A BOOKING CONSUMES — §7.4
+   ========================================================================= */
+
+/**
+ * The two finite things a booking can take, per booking type.
+ *
+ * ===========================================================================
+ * WHY THIS IS ONE FUNCTION AND NOT A CONDITION IN EACH QUERY
+ *
+ * There are three places that need to know what a `both` booking costs: the
+ * lane grid, the table grid, and the capacity check at commit. Written inline
+ * they will agree for about a month. The first one to be updated for a fifth
+ * booking type and not the others produces a range that is full according to
+ * one screen and open according to another — and the member finds out at the
+ * door, which P5 names as the outcome this system is arranged to prevent.
+ *
+ * ===========================================================================
+ * A SPECTATOR CONSUMES NEITHER, AND THAT IS AN OPEN QUESTION, NOT A FINDING
+ *
+ * §7.4 says a spectator "consumes neither, but does consume a seat and a name
+ * on the arrivals list". A name on the arrivals list is unconditional and is
+ * the more important half — a person in the building the desk did not expect
+ * is the failure the row prevents. Whether a spectator also occupies one of
+ * the club's covers is a question about how the club seats people, which the
+ * club has not answered, so this returns zero and the question is registered
+ * in the outstanding register (`spectator-capacity`) rather than guessed.
+ *
+ * Zero is the direction that fails safe against P2: a spectator who turns out
+ * to need a cover is a seat found on the night, whereas a guessed cover count
+ * silently refuses bookings the club would have taken and nobody ever sees it.
+ */
+export function occupancyOf(
+  type: BookingType,
+  people: number,
+): { readonly lane: number; readonly table: number } {
+  switch (type) {
+    case "shoot":
+      return { lane: people, table: 0 };
+    case "table":
+      return { lane: 0, table: people };
+    case "both":
+      return { lane: people, table: people };
+    case "spectate":
+      return { lane: 0, table: 0 };
+  }
+}
+
+/** Whether this booking type needs a discipline. The CHECK in 0008, in TypeScript. */
+export const usesLane = (type: BookingType): boolean =>
+  type === "shoot" || type === "both";
 
 export type Slot = {
   /** Stable id: the Lagos date and time, e.g. `2026-08-14T18:00`. */
   readonly id: string;
   readonly start: Date;
   readonly end: Date;
-  readonly discipline: string;
-  /** Positions across every available lane for this discipline. */
+  /** Null on a table slot — a table is not a discipline. */
+  readonly discipline: string | null;
+  /** Positions across every available lane for this discipline, or covers. */
   readonly capacity: number;
   readonly taken: number;
   readonly free: number;
@@ -180,6 +262,112 @@ export function availableSlots(input: {
 
   const capacity = capacityFor(lanes, discipline);
   if (capacity === 0) return [];
+
+  return grid({
+    policy,
+    now,
+    days,
+    /* A firing point needs an officer on the floor. §13 keeps the rota out of
+       the system, so an unstaffed period is simply not available — the club
+       does not run a range without an officer. */
+    staffedOnly: true,
+    measure: (start, end) => {
+      const taken = booked
+        .filter(
+          (existing) =>
+            existing.discipline === discipline &&
+            overlaps(start, end, existing.slotStart, existing.slotEnd),
+        )
+        .reduce(
+          (total, existing) =>
+            total + occupancyOf(existing.bookingType, existing.positions).lane,
+          0,
+        );
+
+      return {
+        id: slotId(start),
+        start,
+        end,
+        discipline,
+        capacity,
+        taken,
+        free: Math.max(0, capacity - taken),
+      };
+    },
+  });
+}
+
+/**
+ * The same week, counted in covers rather than firing points — §7.4.
+ *
+ * ===========================================================================
+ * TWO DIFFERENCES FROM THE LANE GRID, BOTH DELIBERATE
+ *
+ * 1. IT DOES NOT REQUIRE AN OFFICER. The deck can be open on an evening the
+ *    range is not, and a club whose system could not express that would be a
+ *    booking tool with a calendar bolted on — which is precisely the priority
+ *    inversion P4 names as a structural risk.
+ *
+ * 2. A NULL CAPACITY YIELDS NOTHING, and says so through `emptyTableReason`
+ *    rather than by rendering an empty grid. The club has not counted its
+ *    covers; that is a fact about the club, not an absence of tables.
+ */
+export function availableTables(input: {
+  readonly policy: AvailabilityPolicy;
+  readonly booked: readonly BookedSlot[];
+  readonly now: Date;
+  readonly days: number;
+}): Slot[] {
+  const { policy, booked, now, days } = input;
+
+  const capacity = policy.tableCapacity;
+  if (capacity === null || capacity <= 0) return [];
+
+  return grid({
+    policy,
+    now,
+    days,
+    staffedOnly: false,
+    measure: (start, end) => {
+      const taken = booked
+        .filter((existing) => overlaps(start, end, existing.slotStart, existing.slotEnd))
+        .reduce(
+          (total, existing) =>
+            total + occupancyOf(existing.bookingType, existing.positions).table,
+          0,
+        );
+
+      return {
+        id: slotId(start),
+        start,
+        end,
+        /* A table is not a discipline and must never be labelled as one. */
+        discipline: null,
+        capacity,
+        taken,
+        free: Math.max(0, capacity - taken),
+      };
+    },
+  });
+}
+
+/**
+ * The slot grid itself: every session start the club's week produces.
+ *
+ * Extracted because the lane grid and the table grid must step through
+ * identically. Two copies of this loop would drift on the one thing that must
+ * never drift — a slot id — and a member would be shown a 18:00 table that the
+ * server resolved to a different instant from the 18:00 lane beside it.
+ */
+function grid(input: {
+  readonly policy: AvailabilityPolicy;
+  readonly now: Date;
+  readonly days: number;
+  readonly staffedOnly: boolean;
+  readonly measure: (start: Date, end: Date) => Slot;
+}): Slot[] {
+  const { policy, now, days, staffedOnly, measure } = input;
+
   if (policy.sessionMinutes <= 0) return [];
 
   const earliest = now.getTime() + policy.leadTimeMinutes * 60_000;
@@ -198,9 +386,7 @@ export function availableSlots(input: {
          previous day, so a UTC weekday would shift the club's whole schedule
          back by one day for the first hour of every day. */
       if (period.weekday !== parts.weekday) continue;
-      /* §13 keeps the rota out of the system; an unstaffed period is simply not
-         available. The club does not run a range without an officer. */
-      if (!period.staffed) continue;
+      if (staffedOnly && !period.staffed) continue;
 
       for (
         let minute = period.opens;
@@ -218,23 +404,7 @@ export function availableSlots(input: {
 
         if (start.getTime() < earliest) continue;
 
-        const taken = booked
-          .filter(
-            (existing) =>
-              existing.discipline === discipline &&
-              overlaps(start, end, existing.slotStart, existing.slotEnd),
-          )
-          .reduce((total, existing) => total + existing.positions, 0);
-
-        slots.push({
-          id: slotId(start),
-          start,
-          end,
-          discipline,
-          capacity,
-          taken,
-          free: Math.max(0, capacity - taken),
-        });
+        slots.push(measure(start, end));
       }
     }
   }
@@ -320,5 +490,26 @@ export function emptyReason(
     return "No sessions are staffed at the moment. Call the club.";
   }
 
+  return null;
+}
+
+/**
+ * The same sentence for the tables — §7.4, and P2 applied to hospitality.
+ *
+ * The first branch is the one that will render for some period after opening,
+ * and it is written as a fact about the club rather than as an apology. "Table
+ * bookings are not open yet" is true, is not the member's problem to solve, and
+ * does not suggest the application is broken.
+ */
+export function emptyTableReason(policy: AvailabilityPolicy): string | null {
+  if (policy.tableCapacity === null) {
+    return "Table bookings are not open yet.";
+  }
+  if (policy.tableCapacity === 0) {
+    return "The club has no covers to book at the moment. Call the club.";
+  }
+  if (policy.openingHours.length === 0) {
+    return "The club has not published its opening hours yet.";
+  }
   return null;
 }

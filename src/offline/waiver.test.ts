@@ -377,6 +377,7 @@ describe("the block clears without a reload", () => {
         bookingId: "b-1",
         sessionId: "s-1",
         discipline: "25m-pistol",
+        bookingType: "shoot",
         slotStart: "2026-08-14T17:30:00.000Z",
       },
     ],

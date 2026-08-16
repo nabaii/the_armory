@@ -1,4 +1,5 @@
 import type {
+  BookingType,
   DeviceSurface,
   InvitationStatus,
   LicenceStatus,
@@ -217,7 +218,14 @@ export type PackArrival = {
   bookingId: string | null;
   sessionId: string | null;
   role: ParticipantRole;
-  discipline: string;
+  /**
+   * Null where the booking touches no firing line — a table booking or a
+   * spectator (Members Portal §7.4). The desk still expects them, which is the
+   * entire reason the row is in the pack.
+   */
+  discipline: string | null;
+  /** What they are here for — see `ArrivalRow` in src/server/rows.ts. */
+  bookingType: BookingType;
   slotStart: string;
   /** For a guest: who is bringing them. */
   hostPersonId: string | null;

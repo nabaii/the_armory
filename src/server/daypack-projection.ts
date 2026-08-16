@@ -158,6 +158,7 @@ export function projectDayPack(source: DayPackSource): DayPack {
       sessionId: arrival.sessionId,
       role: arrival.role,
       discipline: arrival.discipline,
+      bookingType: arrival.bookingType,
       slotStart: arrival.slotStart,
       hostPersonId: arrival.hostPersonId,
       invitationId: arrival.invitationId,

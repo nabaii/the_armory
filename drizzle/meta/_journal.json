@@ -57,6 +57,13 @@
       "when": 1786799142794,
       "tag": "0007_member_passwords",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786839075811,
+      "tag": "0008_programme_and_booking_types",
+      "breakpoints": true
     }
   ]
 }
