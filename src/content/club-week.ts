@@ -37,11 +37,9 @@ import { minuteOfDay, type OpeningPeriod } from "@/domain/availability";
  * ===========================================================================
  * WHAT THIS DOES NOT SETTLE
  *
- * Hours alone do not make a calendar. `club_settings.session_minutes` decides
- * how long one booking occupies a lane, and until it is set the grid produces
- * nothing and says so — `emptyReason` names it specifically rather than letting
- * the screen read as a busy club. `table_capacity` is the same story for the
- * deck. Both remain in the outstanding register.
+ * `table_capacity` — how many covers the club can seat. Until it is set, table
+ * bookings are not open and the Diary says so. It remains in the outstanding
+ * register.
  */
 
 /** 0 = Sunday, matching `Date#getDay` and `lagosParts().weekday`. */
@@ -67,3 +65,52 @@ export const CLUB_WEEK: readonly OpeningPeriod[] = EVERY_DAY.map((weekday) => ({
 
 /** The same fact as one sentence, for the public site. */
 export const CLUB_HOURS_LINE = "9am – 6pm, every day";
+
+/* ============================================================================
+   THE SESSION — decided by the founder, 16 August 2026
+
+   "A standard session is 60 minutes. Make the booking system slot-based.
+    60-minute default + 15-minute operational buffer."
+   ========================================================================= */
+
+/**
+ * How long the lane is the member's.
+ *
+ * This is what their booking says, what the desk expects, and what they were
+ * sold. It is NOT the spacing between slots — see the buffer below.
+ */
+export const SESSION_MINUTES = 60;
+
+/**
+ * The club's turnaround between one session and the next.
+ *
+ * Clearing the line, resetting targets, one relay off and the next briefed.
+ * The grid steps by SESSION_MINUTES + TURNAROUND_MINUTES, so the club's day
+ * runs 09:00, 10:15, 11:30, 12:45, 14:00, 15:15, 16:30 — seven sessions
+ * between 9 and 6, each an hour long, each with a quarter hour behind it.
+ *
+ * The last of them ends at 17:30 and its buffer runs to 17:45, comfortably
+ * inside closing. A 17:45 session would end at 18:45 and is not offered: the
+ * fit test is against the session, not the step, so the club keeps every slot
+ * that actually fits and offers none that does not.
+ */
+export const TURNAROUND_MINUTES = 15;
+
+/**
+ * The whole grid for one day of the declared week, as times.
+ *
+ * Exported for the tests and for anybody who wants to see the club's day
+ * without running a query. It is derived from the three constants above rather
+ * than typed out, so it cannot drift from what the portal computes.
+ */
+export function declaredSessionStarts(): number[] {
+  const starts: number[] = [];
+  for (
+    let minute = OPENS;
+    minute + SESSION_MINUTES <= CLOSES;
+    minute += SESSION_MINUTES + TURNAROUND_MINUTES
+  ) {
+    starts.push(minute);
+  }
+  return starts;
+}

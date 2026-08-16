@@ -387,10 +387,9 @@ export default async function BookingFlowPage({
       <Section ground="chalk">
         <BookingFlow
           summary={{
-            whenLabel: `${formatWeekdayDate(chosen.start)} · ${formatTime(chosen.start)}`,
+            whenLabel: `${formatWeekdayDate(chosen.start)} · ${formatTime(chosen.start)}–${formatTime(chosen.end)}`,
             purposeLabel: purposeLabel(bookingType, discipline),
-            slotStart: chosen.start.toISOString(),
-            slotEnd: chosen.end.toISOString(),
+            slotId: chosen.id,
             bookingType,
             discipline,
           }}

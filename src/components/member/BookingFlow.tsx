@@ -55,8 +55,16 @@ import { cn } from "@/lib/cn";
 export type FlowSummary = {
   readonly whenLabel: string;
   readonly purposeLabel: string;
-  readonly slotStart: string;
-  readonly slotEnd: string;
+  /**
+   * The slot's own id — `2026-08-20T18:00`.
+   *
+   * The only field on this form that decides anything. The server re-derives
+   * the club's grid, refuses an id that is not on it, and reads the start and
+   * end off the slot it resolved. There is deliberately no `slotStart` here: a
+   * time this form could post would be a time the server had to either trust or
+   * ignore, and both are worse than not having it.
+   */
+  readonly slotId: string;
   readonly bookingType: string;
   readonly discipline: string | null;
 };
@@ -86,10 +94,11 @@ export function BookingFlow({
   return (
     <form action={action} className="space-y-6">
       {/* Everything steps one to three settled, carried as the form's own
-          record of what the member chose. Re-read and re-checked server-side —
-          a hidden input is a convenience, never an authorisation. */}
-      <input type="hidden" name="slotStart" value={summary.slotStart} />
-      <input type="hidden" name="slotEnd" value={summary.slotEnd} />
+          record of what the member chose. The SLOT ID is the load-bearing one:
+          the action re-derives the club's grid and refuses anything not on it,
+          then reads the times off the slot it resolved rather than off this
+          form. A hidden input is a reference, never an authorisation. */}
+      <input type="hidden" name="slotId" value={summary.slotId} />
       <input type="hidden" name="bookingType" value={summary.bookingType} />
       {summary.discipline && (
         <input type="hidden" name="discipline" value={summary.discipline} />

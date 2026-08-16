@@ -66,6 +66,7 @@ export async function clubAvailabilityPolicy(
     .select({
       sessionMinutes: schema.clubSettings.sessionMinutes,
       bookingLeadTimeMinutes: schema.clubSettings.bookingLeadTimeMinutes,
+      turnaroundMinutes: schema.clubSettings.turnaroundMinutes,
       tableCapacity: schema.clubSettings.tableCapacity,
     })
     .from(schema.clubSettings)
@@ -96,6 +97,11 @@ export async function clubAvailabilityPolicy(
 
   return {
     sessionMinutes: settings.sessionMinutes ?? NO_SESSION_LENGTH,
+    /* Zero, not a guess. Back-to-back sessions is a coherent operating
+       decision and is what the system did before the column existed — see the
+       column's own note in the schema for why this one value is safe to
+       default when none of its neighbours are. */
+    turnaroundMinutes: settings.turnaroundMinutes ?? 0,
     leadTimeMinutes: settings.bookingLeadTimeMinutes ?? 0,
     tableCapacity: settings.tableCapacity,
     openingHours,

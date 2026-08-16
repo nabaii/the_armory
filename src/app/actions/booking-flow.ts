@@ -57,14 +57,26 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getArmoryDb, schema } from "@/db/armory/client";
-import { capacityFor, usesLane } from "@/domain/availability";
+import {
+  availableSlots,
+  availableTables,
+  capacityFor,
+  findSlot,
+  usesLane,
+} from "@/domain/availability";
 import { evaluate } from "@/domain/capability";
 import { BOOKING_TYPES, type BookingType } from "@/domain/enums";
+import { addDays } from "@/lib/time";
 import { uuidv7 } from "@/lib/uuidv7";
 import { routes } from "@/lib/site";
 import { log } from "@/server/log";
 import { applyBookingEvent, draftBooking } from "@/server/armory/bookings";
 import { issueInvitation } from "@/server/armory/invitations";
+import {
+  bookedInWindow,
+  clubAvailabilityPolicy,
+  clubLanes,
+} from "@/server/armory/club-policy";
 import { heldBookingCount } from "@/server/armory/member-bookings";
 import { resolveArmoryMember } from "@/server/armory/member-session";
 import { record } from "@/server/armory/record";
@@ -75,6 +87,15 @@ const store = new PostgresRecordStore();
 
 /** How many companions one booking may name here. */
 const MAX_COMPANIONS = 6;
+
+/**
+ * How far the re-derived grid projects.
+ *
+ * Matches the window the booking flow renders. A tier's own horizon narrows it
+ * further inside MAY_BOOK — this only has to be wide enough to contain any slot
+ * the member could have been shown.
+ */
+const GRID_DAYS = 14;
 
 export async function placeBooking(
   _previous: BookingFlowState,
@@ -91,14 +112,7 @@ export async function placeBooking(
   const member = resolution.member;
   const now = new Date();
 
-  /* ---- What the member chose, re-read rather than trusted ---------------- */
-
-  const slotStart = new Date(String(form.get("slotStart") ?? ""));
-  const slotEnd = new Date(String(form.get("slotEnd") ?? ""));
-
-  if (Number.isNaN(slotStart.getTime()) || Number.isNaN(slotEnd.getTime())) {
-    return { ok: false, formError: "That session could not be read. Choose it again." };
-  }
+  /* ---- What the member chose ---------------------------------------------- */
 
   const bookingType = readBookingType(form.get("bookingType"));
   if (!bookingType) {
@@ -111,6 +125,61 @@ export async function placeBooking(
   if (usesLane(bookingType) && !discipline) {
     return { ok: false, formError: "Choose which line you are shooting." };
   }
+
+  /**
+   * ===========================================================================
+   * THE BOOKING IS SLOT-BASED, AND THIS IS WHERE THAT IS TRUE RATHER THAN SAID
+   *
+   * Founder decision, 16 August 2026: "make the booking system slot-based".
+   *
+   * The form posts a slot id and the times that go with it. This re-derives the
+   * grid from the club's own hours and requires the posted id to be ON it. The
+   * times are then taken FROM the derived slot and the posted ones are
+   * discarded, so a hidden input is genuinely a reference rather than an
+   * authorisation — which is what the old comment claimed and the old code did
+   * not do. It read `slotStart` and `slotEnd` straight off the form.
+   *
+   * What that allowed, before this: a booking at 03:40 on a day the club is
+   * shut, a six-hour booking, or one landing inside another's turnaround. None
+   * of it was reachable through the interface, and all of it was reachable with
+   * a form post — against the one table whose whole job is to say who is on
+   * which lane when.
+   *
+   * It also makes the 15-minute buffer real. A grid is only a promise about the
+   * range's day if nothing can be written between its slots.
+   */
+  const [policy, lanes, booked] = await Promise.all([
+    clubAvailabilityPolicy(getArmoryDb()),
+    clubLanes(getArmoryDb()),
+    bookedInWindow(getArmoryDb(), { from: now, to: addDays(now, GRID_DAYS) }),
+  ]);
+
+  const grid = usesLane(bookingType)
+    ? availableSlots({
+        policy,
+        lanes,
+        booked,
+        discipline: discipline ?? "",
+        now,
+        days: GRID_DAYS,
+      })
+    : availableTables({ policy, booked, now, days: GRID_DAYS });
+
+  const chosen = findSlot(grid, String(form.get("slotId") ?? ""));
+
+  if (!chosen) {
+    /* Every reason this fails is the same to the member: the thing they picked
+       is not on offer any more. Distinguishing "you tampered with the form"
+       from "somebody took it while you were typing" would tell an attacker
+       something and would tell an honest member nothing they can act on. */
+    return {
+      ok: false,
+      formError: "That session is no longer available. Choose another time.",
+    };
+  }
+
+  const slotStart = chosen.start;
+  const slotEnd = chosen.end;
 
   const companions = readCompanions(form);
   if (companions.length > MAX_COMPANIONS) {

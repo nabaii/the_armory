@@ -222,20 +222,21 @@ export const contentGate: GateItem[] = [
     id: "session-length",
     label: "How long does one booking occupy a lane?",
     owner: "Operations",
-    resolved: false,
+    /* SETTLED, 16 August 2026: 60 minutes, with a 15-minute turnaround. */
+    resolved: true,
     severity: "degraded",
     note:
-      "club_settings.session_minutes is unset, and it is now the LAST thing " +
-      "between a published week and a bookable calendar: the availability " +
-      "grid divides an opening period into sessions, and with no session " +
-      "length it produces none — on every day, for every discipline. " +
-      "Deliberately not defaulted to an hour. A guessed session length is a " +
-      "number members plan their evenings around and the club never agreed, " +
-      "and it is the exact failure UNCONFIGURED_AVAILABILITY was written to " +
-      "prevent. `emptyReason` names this specifically rather than letting the " +
-      "screen read as a busy club, so a founder who publishes hours and finds " +
-      "nothing bookable is told why. Set with: " +
-      "update armory.club_settings set session_minutes = <minutes>;",
+      "ANSWERED: a standard session is 60 minutes, with a 15-minute " +
+      "operational buffer between one session and the next. Declared in " +
+      "src/content/club-week.ts and written by `npm run db:hours --apply`. " +
+      "The two are separate columns because they belong to different people: " +
+      "session_minutes is the MEMBER's — what their booking says and how long " +
+      "the lane is theirs — and turnaround_minutes is the CLUB's, for clearing " +
+      "the line and briefing the next relay. Folded into one number, a booking " +
+      "record would claim the member had the lane until 10:15 while the " +
+      "officer walked them off at 10:00. " +
+      "The club's day is therefore seven sessions a discipline: 09:00, 10:15, " +
+      "11:30, 12:45, 14:00, 15:15, 16:30.",
   },
   {
     id: "club-programme",

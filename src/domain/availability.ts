@@ -80,8 +80,29 @@ export type OpeningPeriod = {
 };
 
 export type AvailabilityPolicy = {
-  /** §14. How long one booking occupies a lane. */
+  /** §14. How long one booking occupies a lane. The MEMBER's time. */
   readonly sessionMinutes: number;
+  /**
+   * The club's turnaround between one session and the next, in minutes.
+   *
+   * ===========================================================================
+   * THE SLOT GRID STEPS BY session + turnaround. A BOOKING STILL ENDS AT session.
+   *
+   * With a 60-minute session and a 15-minute buffer the club's day is
+   * 09:00, 10:15, 11:30, 12:45 … and a member who takes the first of those has
+   * a booking that ends at 10:00. The quarter hour after it is the range's:
+   * clearing the line, resetting targets, one relay off and the next briefed.
+   *
+   * Folding the two into a single "slot length" was the obvious simplification
+   * and it is wrong in a way that would surface at the desk. The booking record
+   * would say the member had the lane until 10:15; the officer would be walking
+   * them off at 10:00; and the one holding the phone would be right about what
+   * they were sold. Two numbers, two owners.
+   *
+   * Zero is a coherent answer — back-to-back sessions — and is what every club
+   * running this system had before the column existed.
+   */
+  readonly turnaroundMinutes: number;
   /** §14. */
   readonly openingHours: readonly OpeningPeriod[];
   /**
@@ -116,6 +137,7 @@ export type AvailabilityPolicy = {
  */
 export const UNCONFIGURED_AVAILABILITY: AvailabilityPolicy = {
   sessionMinutes: 60,
+  turnaroundMinutes: 0,
   openingHours: [],
   leadTimeMinutes: 60,
   tableCapacity: null,
@@ -276,7 +298,12 @@ export function availableSlots(input: {
         .filter(
           (existing) =>
             existing.discipline === discipline &&
-            overlaps(start, end, existing.slotStart, existing.slotEnd),
+            overlaps(
+              start,
+              end,
+              existing.slotStart,
+              occupiedUntil(existing, policy.turnaroundMinutes),
+            ),
         )
         .reduce(
           (total, existing) =>
@@ -330,7 +357,16 @@ export function availableTables(input: {
     staffedOnly: false,
     measure: (start, end) => {
       const taken = booked
-        .filter((existing) => overlaps(start, end, existing.slotStart, existing.slotEnd))
+        .filter((existing) =>
+          overlaps(
+            start,
+            end,
+            existing.slotStart,
+            /* A table needs clearing and laying too. The same buffer, for the
+               same reason — and the same no-op on an aligned grid. */
+            occupiedUntil(existing, policy.turnaroundMinutes),
+          ),
+        )
         .reduce(
           (total, existing) =>
             total + occupancyOf(existing.bookingType, existing.positions).table,
@@ -370,6 +406,18 @@ function grid(input: {
 
   if (policy.sessionMinutes <= 0) return [];
 
+  /**
+   * How far apart two sessions start — the member's hour plus the club's
+   * turnaround.
+   *
+   * The FIT test below is against `sessionMinutes` alone, not against this.
+   * A day closing at 18:00 offers a 17:00 session with a 60-minute length even
+   * though its buffer would run past closing, because the buffer exists to
+   * separate that session from the NEXT one and there is no next one. Testing
+   * the step instead would silently cost the club its last slot of every day.
+   */
+  const step = policy.sessionMinutes + Math.max(0, policy.turnaroundMinutes);
+
   const earliest = now.getTime() + policy.leadTimeMinutes * 60_000;
   const slots: Slot[] = [];
 
@@ -391,7 +439,7 @@ function grid(input: {
       for (
         let minute = period.opens;
         minute + policy.sessionMinutes <= period.closes;
-        minute += policy.sessionMinutes
+        minute += step
       ) {
         const start = lagosInstant(
           parts.year,
@@ -425,6 +473,33 @@ const overlaps = (
   startB: Date,
   endB: Date,
 ): boolean => startA < endB && startB < endA;
+
+/**
+ * How long a booking keeps a lane out of the grid — its own length, plus the
+ * turnaround that has to happen before anybody else steps onto it.
+ *
+ * ===========================================================================
+ * ON THE ALIGNED GRID THIS CHANGES NOTHING, AND THAT IS THE POINT
+ *
+ * Slots are spaced by session + turnaround, so a 09:00 booking extended to
+ * 10:15 still does not collide with the 10:15 slot — the overlap test is
+ * half-open, and `10:15 < 10:15` is false. Every on-grid booking behaves
+ * exactly as it did before this function existed.
+ *
+ * What it protects is the OFF-GRID booking: one written by the desk for a
+ * member who turned up, one from before the club set a turnaround, one from a
+ * week when the hours were different. Those can end at 10:05, and without this
+ * the 10:15 slot would look free while the line was still being cleared. The
+ * grid's spacing is a promise about the range's day; this is what keeps the
+ * promise when a booking did not come from the grid.
+ */
+const occupiedUntil = (
+  booking: BookedSlot,
+  turnaroundMinutes: number,
+): Date =>
+  turnaroundMinutes > 0
+    ? new Date(booking.slotEnd.getTime() + turnaroundMinutes * 60_000)
+    : booking.slotEnd;
 
 /**
  * The slot id: Lagos date and time.

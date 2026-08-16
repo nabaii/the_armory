@@ -216,6 +216,39 @@ export const clubSettings = armory.table(
     bookingLeadTimeMinutes: integer("booking_lead_time_minutes"),
 
     /**
+     * THE OPERATIONAL BUFFER BETWEEN ONE SESSION AND THE NEXT, IN MINUTES.
+     *
+     * Decided by the founder, 16 August 2026: a 60-minute session with a
+     * 15-minute buffer.
+     *
+     * =======================================================================
+     * IT BELONGS TO THE RANGE, NOT TO THE MEMBER
+     *
+     * This is the distinction the column exists to hold. The member's session
+     * is `session_minutes` and that is what their booking says, what the desk
+     * expects and what the lane is theirs for. The buffer is the club's:
+     * clearing the line, resetting targets, walking one relay off and briefing
+     * the next.
+     *
+     * So it is NOT added to the booking's length. A member who books 09:00 has
+     * a booking that ends at 10:00, and the next bookable slot is 10:15. If the
+     * buffer were folded into the session the member would appear to have the
+     * lane for 75 minutes, which is not what they were sold and not what the
+     * desk would enforce.
+     *
+     * =======================================================================
+     * NULL IS ZERO HERE, AND THAT IS SAFE IN A WAY THE OTHERS ARE NOT
+     *
+     * Every other unset value in this table produces nothing rather than a
+     * guess. This one defaults to no buffer, because zero is a coherent
+     * operating decision — back-to-back sessions — and because a club that has
+     * not thought about turnaround is describing the behaviour the system had
+     * before this column existed. Nothing is invented and nothing silently
+     * narrows.
+     */
+    turnaroundMinutes: integer("turnaround_minutes"),
+
+    /**
      * §7.4's table capacity — SEATS, not lanes.
      *
      *   "A table-only booking consumes no lane; a spectator consumes neither,

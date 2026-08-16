@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { lagosParts } from "@/lib/time";
 import {
   UNCONFIGURED_AVAILABILITY,
   availableSlots,
@@ -15,7 +16,15 @@ import {
   type BookedSlot,
   type LaneInfo,
 } from "./availability";
-import { CLOSES, CLUB_HOURS_LINE, CLUB_WEEK, OPENS } from "@/content/club-week";
+import {
+  CLOSES,
+  CLUB_HOURS_LINE,
+  CLUB_WEEK,
+  OPENS,
+  SESSION_MINUTES,
+  TURNAROUND_MINUTES,
+  declaredSessionStarts,
+} from "@/content/club-week";
 
 /**
  * §6.2: "Availability computed from lanes, hours, officer coverage and existing
@@ -40,6 +49,9 @@ const lane = (
 
 const policy = (overrides: Partial<AvailabilityPolicy> = {}): AvailabilityPolicy => ({
   sessionMinutes: 60,
+  /* No buffer by default, so every pre-existing case still describes a
+     back-to-back day and the turnaround tests opt in explicitly. */
+  turnaroundMinutes: 0,
   leadTimeMinutes: 0,
   openingHours: [
     {
@@ -55,6 +67,21 @@ const policy = (overrides: Partial<AvailabilityPolicy> = {}): AvailabilityPolicy
   tableCapacity: null,
   ...overrides,
 });
+
+/** The club's real configuration: its declared week, session and buffer. */
+const declaredPolicy = (): AvailabilityPolicy => ({
+  sessionMinutes: SESSION_MINUTES,
+  turnaroundMinutes: TURNAROUND_MINUTES,
+  openingHours: CLUB_WEEK,
+  leadTimeMinutes: 0,
+  tableCapacity: null,
+});
+
+/** Minutes since Lagos midnight for an instant, for comparing against a grid. */
+const lagosMinuteOf = (instant: Date): number => {
+  const parts = lagosParts(instant);
+  return parts.hours * 60 + parts.minutes;
+};
 
 const slots = (input: {
   policy?: AvailabilityPolicy;
@@ -376,12 +403,13 @@ describe("the club's declared week", () => {
     assert.ok(CLUB_WEEK.every((period) => period.staffed));
   });
 
-  it("produces a bookable day once a session length exists", () => {
-    /* Nine hours, hourly, is nine sessions — and none at all without the
-       session length, which is the whole point of the branch above. */
-    const withWeek = { ...policy({ openingHours: CLUB_WEEK }), sessionMinutes: 60 };
+  it("runs the club's declared day: 60 minutes, 15 apart", () => {
+    /* Nine hours with a 60-minute session and a 15-minute buffer is SEVEN
+       sessions, not nine. 09:00, 10:15, 11:30, 12:45, 14:00, 15:15, 16:30 —
+       and the 17:45 that a naive step would offer runs to 18:45, past closing,
+       so it is not there. */
     const day = availableSlots({
-      policy: withWeek,
+      policy: declaredPolicy(),
       lanes: [lane("l-1", "pistol")],
       booked: [],
       discipline: "pistol",
@@ -389,9 +417,64 @@ describe("the club's declared week", () => {
       days: 1,
     });
 
-    assert.equal(day.length, 9);
-    assert.equal(day[0].id, "2026-08-13T09:00");
-    assert.equal(day[8].id, "2026-08-13T17:00");
+    assert.deepEqual(
+      day.map((slot) => slot.id),
+      [
+        "2026-08-13T09:00",
+        "2026-08-13T10:15",
+        "2026-08-13T11:30",
+        "2026-08-13T12:45",
+        "2026-08-13T14:00",
+        "2026-08-13T15:15",
+        "2026-08-13T16:30",
+      ],
+    );
+  });
+
+  it("gives the member sixty minutes, not seventy-five", () => {
+    /* The distinction the two columns exist to hold. A booking at 09:00 ends
+       at 10:00; the quarter hour after it is the range's, not the member's.
+       Folded into one number, the record would say the member had the lane
+       until 10:15 while the officer walked them off at 10:00 — and the one
+       holding the phone would be right. */
+    const [first] = availableSlots({
+      policy: declaredPolicy(),
+      lanes: [lane("l-1", "pistol")],
+      booked: [],
+      discipline: "pistol",
+      now: NOW,
+      days: 1,
+    });
+
+    assert.equal(
+      (first.end.getTime() - first.start.getTime()) / 60_000,
+      SESSION_MINUTES,
+    );
+  });
+
+  it("agrees with the grid the club declared", () => {
+    /* `declaredSessionStarts` is what a founder reads to see the club's day.
+       It derives from the same three constants the portal computes from, and
+       this is what keeps the two from drifting. */
+    const day = availableSlots({
+      policy: declaredPolicy(),
+      lanes: [lane("l-1", "pistol")],
+      booked: [],
+      discipline: "pistol",
+      now: NOW,
+      days: 1,
+    });
+
+    assert.equal(declaredSessionStarts().length, 7);
+    assert.deepEqual(
+      day.map((slot) => lagosMinuteOf(slot.start)),
+      declaredSessionStarts(),
+    );
+  });
+
+  it("declares a 60-minute session and a 15-minute buffer", () => {
+    assert.equal(SESSION_MINUTES, 60);
+    assert.equal(TURNAROUND_MINUTES, 15);
   });
 
   it("says the same thing to the public site", () => {
@@ -568,5 +651,162 @@ describe("the tables keep their own hours", () => {
       /opening hours/,
     );
     assert.equal(emptyTableReason(policy({ tableCapacity: 6 })), null);
+  });
+});
+
+/* ============================================================================
+   THE OPERATIONAL BUFFER — founder decision, 16 August 2026
+
+   "60-minute default + 15-minute operational buffer."
+
+   The buffer belongs to the RANGE and the session belongs to the MEMBER, and
+   almost every test below is a way of asking whether those two have stayed
+   apart. They are one field away from being the same number, and the day they
+   become one is the day a booking record and a range officer disagree about
+   when somebody has to be off the line.
+   ========================================================================= */
+
+describe("the turnaround between sessions", () => {
+  const buffered = (turnaroundMinutes: number) =>
+    availableSlots({
+      policy: policy({ turnaroundMinutes }),
+      lanes: [lane("l-1", "pistol")],
+      booked: [],
+      discipline: "pistol",
+      now: NOW,
+      days: 1,
+    });
+
+  it("spaces the grid by session plus buffer", () => {
+    /* The default fixture is 09:00–12:00. Back to back that is three sessions;
+       with fifteen minutes between them it is two, because 11:30 would run to
+       12:30 and the club shuts at noon. */
+    assert.deepEqual(
+      buffered(0).map((s) => s.id),
+      ["2026-08-13T09:00", "2026-08-13T10:00", "2026-08-13T11:00"],
+    );
+    assert.deepEqual(
+      buffered(15).map((s) => s.id),
+      ["2026-08-13T09:00", "2026-08-13T10:15"],
+    );
+  });
+
+  it("keeps the last session of the day, whose buffer runs past closing", () => {
+    /* The fit test is against the SESSION, not the step. A buffer exists to
+       separate one session from the next; there is no next one at closing
+       time, and testing the step instead would silently cost the club its last
+       slot of every single day. 11:00–12:00 fits exactly. */
+    const tight = availableSlots({
+      policy: policy({
+        turnaroundMinutes: 30,
+        openingHours: [
+          { weekday: THURSDAY, opens: minuteOfDay(9), closes: minuteOfDay(12), staffed: true },
+        ],
+      }),
+      lanes: [lane("l-1", "pistol")],
+      booked: [],
+      discipline: "pistol",
+      now: NOW,
+      days: 1,
+    });
+
+    /* 09:00 and 10:30. 12:00 would start after closing; 11:30 would end at
+       12:30. Neither is offered — and 10:30 IS, even though its buffer would
+       run to 12:00. */
+    assert.deepEqual(
+      tight.map((s) => s.id),
+      ["2026-08-13T09:00", "2026-08-13T10:30"],
+    );
+  });
+
+  it("changes nothing about an on-grid booking's occupancy", () => {
+    /* The buffer extends how long a lane is out of the grid, and on an aligned
+       grid that is a no-op: the overlap test is half-open, so a 09:00 booking
+       held until 10:15 still does not collide with the 10:15 slot. This is the
+       case that must NOT regress — if it did, every second slot of every day
+       would vanish. */
+    const onGrid: BookedSlot = {
+      slotStart: new Date("2026-08-13T08:00:00.000Z"), // 09:00 Lagos
+      slotEnd: new Date("2026-08-13T09:00:00.000Z"), // 10:00 Lagos
+      discipline: "pistol",
+      bookingType: "shoot",
+      positions: 2,
+    };
+
+    const result = availableSlots({
+      policy: policy({ turnaroundMinutes: 15 }),
+      lanes: [lane("l-1", "pistol", "available", 2)],
+      booked: [onGrid],
+      discipline: "pistol",
+      now: NOW,
+      days: 1,
+    });
+
+    assert.equal(result.find((s) => s.id === "2026-08-13T09:00")?.free, 0);
+    assert.equal(result.find((s) => s.id === "2026-08-13T10:15")?.free, 2);
+  });
+
+  it("protects a slot that begins inside an OFF-GRID booking's turnaround", () => {
+    /* The case the occupancy extension exists for: a booking written by the
+       desk, or from before the club set a turnaround, ending at 10:05. Without
+       the buffer the 10:15 slot looks free while the line is still being
+       cleared. */
+    const offGrid: BookedSlot = {
+      slotStart: new Date("2026-08-13T08:05:00.000Z"), // 09:05 Lagos
+      slotEnd: new Date("2026-08-13T09:05:00.000Z"), // 10:05 Lagos
+      discipline: "pistol",
+      bookingType: "shoot",
+      positions: 2,
+    };
+
+    const withBuffer = availableSlots({
+      policy: policy({ turnaroundMinutes: 15 }),
+      lanes: [lane("l-1", "pistol", "available", 2)],
+      booked: [offGrid],
+      discipline: "pistol",
+      now: NOW,
+      days: 1,
+    });
+
+    /* 10:05 + 15 = 10:20, which is inside the 10:15–11:15 slot. */
+    assert.equal(withBuffer.find((s) => s.id === "2026-08-13T10:15")?.free, 0);
+
+    /* And with no turnaround declared, the same booking leaves it free — which
+       is correct for a club running back to back, and is the behaviour every
+       club had before the column existed. */
+    const noBuffer = availableSlots({
+      policy: policy({ turnaroundMinutes: 0 }),
+      lanes: [lane("l-1", "pistol", "available", 2)],
+      booked: [offGrid],
+      discipline: "pistol",
+      now: NOW,
+      days: 1,
+    });
+
+    assert.equal(noBuffer.find((s) => s.id === "2026-08-13T11:00")?.free, 2);
+  });
+
+  it("clears the tables on the same buffer", () => {
+    /* A table needs laying as much as a lane needs clearing, and the deck's
+       grid steps by the same amount. */
+    assert.equal(
+      availableTables({
+        policy: policy({ tableCapacity: 8, turnaroundMinutes: 15 }),
+        booked: [],
+        now: NOW,
+        days: 1,
+      }).map((s) => s.id).join(","),
+      "2026-08-13T09:00,2026-08-13T10:15",
+    );
+  });
+
+  it("treats a negative buffer as none rather than overlapping sessions", () => {
+    /* The database refuses one (drizzle/0009) and this refuses to act on one.
+       A negative step would hand two relays the same lane, which is the single
+       value in this file that could put two people on one firing point. */
+    assert.deepEqual(
+      buffered(-30).map((s) => s.id),
+      buffered(0).map((s) => s.id),
+    );
   });
 });

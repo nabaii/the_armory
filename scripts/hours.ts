@@ -20,14 +20,17 @@
  * changes nothing the second time.
  *
  * ============================================================================
- * WHAT IT WILL NOT DO
+ * WHAT IT WRITES, AND WHAT IT WILL NOT
  *
- * It will not set `session_minutes` or `table_capacity`. Both are outstanding
- * club decisions, both are registered, and a script that quietly defaulted them
- * would put a number in front of members that nobody agreed — which is the
- * failure `UNCONFIGURED_AVAILABILITY` exists to prevent. It reports them as
- * unset and says what that costs, because a founder who publishes hours and
- * finds nothing bookable deserves to be told why on the spot.
+ * It writes the three things the club has DECIDED: the week, the session length
+ * and the turnaround. All three come from src/content/club-week.ts and all
+ * three are founder decisions of the same kind — the club's operating day.
+ *
+ * It will not set `table_capacity`. That is an outstanding decision, it is
+ * registered, and a script that quietly defaulted it would sell a Friday
+ * evening the kitchen cannot serve. It is reported as unset and the report says
+ * what that costs, because a founder who publishes a week and finds tables
+ * closed deserves to be told why on the spot rather than to go looking.
  *
  * ============================================================================
  * IT REPLACES, IT DOES NOT ACCUMULATE
@@ -40,9 +43,14 @@
  * who changed them is a founder screen's job, not this script's.
  */
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getArmoryDb, isArmoryDatabaseConfigured, schema } from "@/db/armory/client";
-import { CLUB_WEEK } from "@/content/club-week";
+import {
+  CLUB_WEEK,
+  SESSION_MINUTES,
+  TURNAROUND_MINUTES,
+  declaredSessionStarts,
+} from "@/content/club-week";
 import { uuidv7 } from "@/lib/uuidv7";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -110,12 +118,28 @@ async function main() {
   }
   console.log("");
 
+  /* The day a member actually sees, spelled out. A founder reading "60 + 15"
+     should not have to work out where that lands. */
+  const starts = declaredSessionStarts();
+  console.log(
+    `  ${bold("Sessions")}  ${SESSION_MINUTES} minutes, ` +
+      `${TURNAROUND_MINUTES} minutes' turnaround between them\n`,
+  );
+  console.log(
+    "  " +
+      starts
+        .map((minute) => `${clock(minute)}–${clock(minute + SESSION_MINUTES)}`)
+        .join("  "),
+  );
+  console.log(dim(`  ${starts.length} sessions a day, per discipline.\n`));
+
   /* ---- The settings that decide whether any of it is bookable ------------ */
 
   const [settings] = await db
     .select({
       sessionMinutes: schema.clubSettings.sessionMinutes,
       leadTime: schema.clubSettings.bookingLeadTimeMinutes,
+      turnaroundMinutes: schema.clubSettings.turnaroundMinutes,
       tableCapacity: schema.clubSettings.tableCapacity,
     })
     .from(schema.clubSettings)
@@ -127,6 +151,13 @@ async function main() {
       settings?.sessionMinutes
         ? green(`${settings.sessionMinutes} minutes`)
         : amber("UNSET — no slots are produced, on any day")
+    }`,
+  );
+  console.log(
+    `  turnaround         ${
+      settings?.turnaroundMinutes
+        ? green(`${settings.turnaroundMinutes} minutes between sessions`)
+        : dim("unset — sessions run back to back")
     }`,
   );
   console.log(
@@ -167,21 +198,62 @@ async function main() {
         label: period.label ?? null,
       })),
     );
+
+    /**
+     * The session and its turnaround, in the same transaction as the week.
+     *
+     * They belong together: a week published without a session length produces
+     * no slots at all, and the two arriving separately is the half-configured
+     * state the portal has to have a sentence for. One transaction means a
+     * founder cannot end up in it by running this script.
+     *
+     * `club_settings` is a singleton enforced by a unique index, so this is an
+     * upsert against the one row migration 0006 created — and it touches only
+     * the two columns this script owns. Everything else in that table is
+     * somebody else's decision.
+     */
+    const [existing] = await tx
+      .select({ id: schema.clubSettings.id })
+      .from(schema.clubSettings)
+      .limit(1);
+
+    if (existing) {
+      await tx
+        .update(schema.clubSettings)
+        .set({
+          sessionMinutes: SESSION_MINUTES,
+          turnaroundMinutes: TURNAROUND_MINUTES,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.clubSettings.id, existing.id));
+    } else {
+      await tx.insert(schema.clubSettings).values({
+        id: uuidv7(),
+        sessionMinutes: SESSION_MINUTES,
+        turnaroundMinutes: TURNAROUND_MINUTES,
+      });
+    }
   });
 
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(schema.openingHours);
 
-  console.log(green(`  Published. ${count} periods now on file.\n`));
+  console.log(
+    green(
+      `  Published. ${count} periods on file, ` +
+        `${SESSION_MINUTES}-minute sessions, ${TURNAROUND_MINUTES}-minute turnaround.\n`,
+    ),
+  );
 
-  if (!settings?.sessionMinutes) {
+  if (settings?.tableCapacity === null || settings?.tableCapacity === undefined) {
     console.log(
-      amber("  The week is published and NOTHING IS BOOKABLE YET.\n") +
-        dim("  A session length has not been set, so the availability grid produces\n") +
-        dim("  no slots. The portal says so specifically rather than reading as a\n") +
-        dim("  busy club. Set it when the club has decided:\n\n") +
-        dim("    update armory.club_settings set session_minutes = 60;\n"),
+      amber("  The range is bookable. THE TABLES ARE NOT.\n") +
+        dim("  The club has not said how many covers it can seat, so table bookings\n") +
+        dim("  stay closed and the Diary says so. Deliberately not defaulted — an\n") +
+        dim("  invented number sells a Friday the kitchen cannot serve. Set it when\n") +
+        dim("  the club has counted:\n\n") +
+        dim("    update armory.club_settings set table_capacity = <covers>;\n"),
     );
   }
 }

@@ -28,7 +28,9 @@ Shared components, all reviewable at `/brand/components`:
 `MembersShell` · `RemedyCard` · `StatusPill` · `AllowanceMeter` · `ScoreLine`
 · `ProgrammeLine`.
 
-Data work — `drizzle/0008_programme_and_booking_types.sql`:
+Data work:
+
+`drizzle/0008_programme_and_booking_types.sql`
 
 1. `armory.opening_hours` — the club's week as rows.
 2. `club_settings.session_minutes`, `booking_lead_time_minutes`,
@@ -36,6 +38,11 @@ Data work — `drizzle/0008_programme_and_booking_types.sql`:
 3. `armory.bookings.booking_type` and a nullable `discipline`, paired by a
    CHECK.
 4. `armory.events` — the one-off programme feed.
+
+`drizzle/0009_session_turnaround.sql`
+
+5. `club_settings.turnaround_minutes` — the operational buffer between one
+   session and the next, kept apart from the session itself.
 
 ---
 
@@ -106,6 +113,46 @@ field: an unstaffed period yields no shooting slots at all while still
 publishing to the Diary as club open. If the club's real officer coverage is
 narrower, that is the one line to change.
 
+**The session — 60 minutes, with a 15-minute operational buffer.**
+
+Two columns, not one, because they belong to different people:
+
+| | Whose | What it does |
+| --- | --- | --- |
+| `session_minutes` | the member's | What their booking says, what the desk expects, how long the lane is theirs |
+| `turnaround_minutes` | the club's | Clearing the line, resetting targets, one relay off and the next briefed |
+
+The grid steps by their sum; a booking still ends at the session. A member who
+takes 09:00 has a booking that ends at 10:00, and the next bookable slot is
+10:15. Folded into a single "slot length" the record would claim they had the
+lane until 10:15 while the officer walked them off at 10:00 — and the one
+holding the phone would be right.
+
+The club's day is therefore **seven sessions per discipline**:
+
+```
+09:00–10:00   10:15–11:15   11:30–12:30   12:45–13:45
+14:00–15:00   15:15–16:15   16:30–17:30
+```
+
+The 17:45 a naive step would offer runs to 18:45, past closing, so it is not
+there. The fit test is against the *session*, not the step — testing the step
+would silently cost the club its last slot of every day, since a buffer exists
+to separate one session from the next and at closing there is no next one.
+
+**Booking is slot-based, and enforced rather than assumed.**
+
+`placeBooking` re-derives the grid from the club's own hours and refuses any
+slot id not on it, then takes the times from the slot it resolved. The form no
+longer posts a start or an end at all.
+
+Before this it read `slotStart` and `slotEnd` straight off hidden inputs behind
+a comment claiming they were "re-read rather than trusted". They were not. That
+allowed a booking at 03:40 on a day the club is shut, a six-hour booking, or one
+landing inside another's turnaround — none reachable through the interface, all
+reachable with a form post, against the one table whose job is to say who is on
+which lane when.
+
 ---
 
 ## Publishing the club's week
@@ -123,22 +170,20 @@ nothing the second time. It also reports what still stands between a published
 week and a bookable calendar, because a founder who publishes hours and finds
 nothing bookable deserves to be told why on the spot.
 
-**One thing still does.** `club_settings.session_minutes` is unset, and the
-availability grid divides an opening period into sessions — with no session
-length it produces none, on every day, for every discipline. The portal names
-that specifically rather than reading as a busy club:
+It writes the week, the session length and the turnaround — the three things
+the club has decided. It does not write `table_capacity`, which is still open:
+until it is set, table bookings stay closed and the Diary says so.
+
+If the session length were ever unset, the grid would produce nothing on every
+day and the portal would name that specifically rather than reading as a busy
+club:
 
 > The club has not set how long a session runs, so nothing can be booked yet.
-
-```sql
--- The last value between a published week and a bookable calendar.
-update armory.club_settings set session_minutes = 60;
-```
 
 Everything else, for reference:
 
 ```sql
--- Notice required, and covers at the tables.
+-- Covers at the tables, and any minimum notice.
 update armory.club_settings
    set booking_lead_time_minutes = 60,
        table_capacity = 24;
@@ -172,8 +217,14 @@ surface loaded as a signed-in founding member.
 | `opening_hours_period_is_ordered` | refuses a period closing before it opens |
 | `opening_hours_weekday_is_a_weekday` | refuses weekday 7 |
 | `events_times_are_absent_or_ordered` | refuses a start with no end |
-| `npm run db:hours -- --apply` | publishes 7 periods, warns that nothing is bookable without a session length |
+| `club_settings_turnaround_is_not_negative` | refuses a negative buffer — the one value that would hand two relays the same lane |
+| `npm run db:hours -- --apply` | publishes 7 periods, 60-minute sessions, 15-minute turnaround |
 | Today, Diary (both modes), Book, Compete, Me | render for a real member |
+| A booking placed through all five steps | lands as `shoot / 10m-air-rifle / confirmed`, 11:30–12:30, **60 minutes** |
+| The slot it took | drops from 2 places to 1 |
+| The next slot, 12:45 | still 2 places — the buffer is a no-op on an aligned grid |
+| Forged slot ids: `03:40` (club shut), `11:00` (between slots) | both refused, flow returns to step 1 |
+| A genuine slot id | proceeds to step 4 |
 
 **It found a defect nothing else would have.** The Diary returned a 500 on every
 request — `WeekStrip` and `ModeSwitch` are client components and the page was
