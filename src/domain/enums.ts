@@ -313,6 +313,93 @@ export const INCIDENT_INVOLVEMENTS = [
 ] as const;
 export type IncidentInvolvement = (typeof INCIDENT_INVOLVEMENTS)[number];
 
+/**
+ * THE DEGRADATION LADDER — Management System §6.2.
+ *
+ *   "The club's degradation order under staffing pressure is already defined:
+ *    guest numbers cap first, then live fire closes, then the full range closes,
+ *    then the clubhouse trades only. It currently lives in a document, which
+ *    means that under real pressure it lives in somebody's memory."
+ *
+ * ===========================================================================
+ * THE ORDER IS THE CONTENT, WHICH IS WHY IT IS AN ORDERED LIST
+ *
+ * These are not four independent states the club picks between. They are four
+ * rungs, and the club's own operating principle is that it comes down them in
+ * sequence — you do not close the range while still admitting guests. The index
+ * of a value in this array is therefore meaningful, and `src/domain/operating.ts`
+ * compares them numerically.
+ *
+ * A club under pressure improvises, and improvisation is the failure §6.2 names:
+ * the order exists so that an understaffed evening degrades BY DESIGN. Written
+ * in a document it lives in whoever is on shift; written here it moves guest
+ * caps, closes slots, notifies members and updates the desk's day pack.
+ */
+export const OPERATING_LEVELS = [
+  /** Everything open. The state the club is in unless somebody says otherwise. */
+  "normal",
+  /** Guest numbers capped. The first thing to give, and the least visible. */
+  "guests_capped",
+  /** No live fire. The deck and kitchen still trade — the hospitality half. */
+  "live_fire_closed",
+  /** The range is shut. The clubhouse trades only. */
+  "range_closed",
+] as const;
+export type OperatingLevel = (typeof OPERATING_LEVELS)[number];
+
+/**
+ * WHY THE CLUB DEGRADED — Management §11.3.
+ *
+ *   "Degradation events, with reasons → the staffing argument, made from
+ *    evidence."
+ *
+ * A closed vocabulary rather than free text, for the reason `charges.ts` gives
+ * about revenue sources: the value of this control over a season is the RECORD
+ * of why the club degraded, and a record grouped on strings somebody typed is
+ * three spellings of "short-staffed". The free-text note sits beside it and
+ * carries the particulars.
+ */
+export const DEGRADATION_CAUSES = [
+  /** The commonest, and the one §4.3 says this control exists for. */
+  "staffing",
+  /** An officer certification lapsed, or nobody qualified is on the floor. */
+  "coverage",
+  "weather",
+  /** A lane, the ventilation, the targets. */
+  "equipment",
+  /** Imposed by the National Stadium rather than chosen by the club. */
+  "stadium",
+  /** Following an incident, on the safety holder's instruction. */
+  "safety",
+  "other",
+] as const;
+export type DegradationCause = (typeof DEGRADATION_CAUSES)[number];
+
+/**
+ * WHAT A NEAR-MISS WAS ABOUT — Management §9.2.
+ *
+ * Deliberately shorter and blunter than `INCIDENT_CATEGORIES`. §9.2 requires a
+ * report that "can be submitted from a phone in under thirty seconds", and every
+ * additional option is a decision somebody makes while standing on a range
+ * wanting to get back to work. Seven categories is a form; four is a tap.
+ *
+ * They also ask a different question. An incident category names what HAPPENED;
+ * these name what ALMOST happened, which is why "nearly" reads through all of
+ * them and why none of them is a person.
+ */
+export const NEAR_MISS_KINDS = [
+  /** Muzzle direction, crossing the line, a shot out of sequence. */
+  "line_discipline",
+  /** A firearm or a lane behaved unexpectedly. */
+  "equipment",
+  /** The wrong ammunition, an unsafe load, a mix-up on the bench. */
+  "ammunition",
+  /** Somebody where they should not have been. */
+  "movement",
+  "other",
+] as const;
+export type NearMissKind = (typeof NEAR_MISS_KINDS)[number];
+
 /* ---------------------------------------------------------------------------
    PROPERTY — §3.4
    -------------------------------------------------------------------------- */

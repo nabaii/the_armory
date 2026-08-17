@@ -188,8 +188,25 @@ export function crossings(
    configuration, and the club's answer replaces them by editing this list.
    ========================================================================= */
 
+/**
+ * ===========================================================================
+ * `safety_report` IS IN EVERY BUNDLE BUT ONE, AND THAT IS S5 BEING HONOURED
+ *
+ * S5 requires near-miss reporting to be open to any member of staff, in under
+ * thirty seconds, because "a reporting surface that is… visible to the wrong
+ * people will produce silence". A test asserting that read it literally and
+ * caught a real omission: front of house had no `safety_report`, so the person
+ * who spends the whole evening on the premises watching people arrive could not
+ * file a report about what they saw.
+ *
+ * The one exception is `read_only`, and it is not an oversight. That role exists
+ * so the club can grant VISIBILITY without the ability to change the record — an
+ * accountant, an auditor — and filing a report is a write. Widening it would
+ * also contradict the note on that bundle: "read only" meaning "reads and writes
+ * a bit" is how a dormant account becomes the one that leaks.
+ */
 export const ROLE_BUNDLES: Readonly<Record<StaffRole, readonly StaffGrant[]>> = {
-  front_of_house: ["desk", "people_read"],
+  front_of_house: ["desk", "people_read", "safety_report"],
   range_officer: ["desk", "safety_report"],
   armourer: ["desk", "custody", "safety_report"],
   duty_manager: [
@@ -200,7 +217,7 @@ export const ROLE_BUNDLES: Readonly<Record<StaffRole, readonly StaffGrant[]>> = 
     "safety_report",
     "safety_manage",
   ],
-  finance: ["ledger", "intelligence_commercial"],
+  finance: ["ledger", "intelligence_commercial", "safety_report"],
   safety_officer: ["safety_report", "safety_manage", "intelligence_operational"],
   /**
    * Read-only predates the management system and is kept because it is held by
@@ -298,7 +315,35 @@ const SURFACE_GRANTS: Readonly<Record<ManagementSurface, readonly StaffGrant[]>>
   day: STAFF_GRANTS,
   diary: ["programme"],
   people: ["people_read", "people_write"],
-  safety: ["safety_report", "safety_manage"],
+  /**
+   * `safety_manage` alone, and NOT `safety_report`.
+   *
+   * =========================================================================
+   * FILING A REPORT IS NOT A SURFACE. IT IS AN ACTION FROM ANYWHERE
+   *
+   * This was `["safety_report", "safety_manage"]` until a test asked whether
+   * every working role could file a near-miss. Making that true — S5 requires it
+   * — handed front of house and finance the whole SAFETY surface: the expiry
+   * register, incident narratives, custody exceptions. None of which they need,
+   * and incident narratives naming members are not a front-of-house read.
+   *
+   * The mistake was overloading one grant with two meanings: "may file a report"
+   * and "is responsible for safety". They are separated now. `safety_report`
+   * admits the thirty-second form, which §9.2 wants one tap from everywhere and
+   * which is therefore its own route rather than a tab. `safety_manage` admits
+   * the register — the reports, the veto, the outcomes.
+   *
+   * =========================================================================
+   * `custody` IS HERE BECAUSE §9.1 PUTS CUSTODY EXCEPTIONS ON THIS SURFACE
+   *
+   * SAFETY holds four things — incidents, near-misses, custody exceptions and
+   * the expiry register — and the armourer owns the third. Admitting them and
+   * filtering WITHIN the page is the same shape INTELLIGENCE already uses to
+   * keep a safety officer away from revenue: the surface lets you in, the grant
+   * decides what you read. An armourer sees their exceptions and never a
+   * near-miss narrative.
+   */
+  safety: ["safety_manage", "custody"],
   ledger: ["ledger"],
   intelligence: ["intelligence_operational", "intelligence_commercial"],
 };
@@ -364,8 +409,25 @@ export const DAY_PANELS = [
   { id: "arrivals", grant: "desk", title: "Expected arrivals" },
   { id: "guest-links", grant: "people_read", title: "Guest links outstanding" },
   { id: "walk-ups", grant: "desk", title: "Awaiting a decision" },
-  { id: "coverage", grant: "safety_report", title: "Lanes and coverage" },
-  { id: "expiries-today", grant: "safety_report", title: "Expiries among today's arrivals" },
+  /**
+   * Coverage and today's expiries hang off `desk`, not off a safety grant.
+   *
+   * §6.1 gives the range officer both, and a range officer holds `desk`. Keying
+   * them to `safety_report` instead — which every working role now carries —
+   * would have put them in front of Finance, who has no floor to cover.
+   *
+   * Front of house getting them is not a leak but an improvement on §6.1's list:
+   * they are the first person a member with a lapsed licence walks past, and
+   * §9.3's whole claim is that nobody should discover a lapse at the firing point.
+   */
+  { id: "coverage", grant: "desk", title: "Lanes and coverage" },
+  { id: "expiries-today", grant: "desk", title: "Expiries among today's arrivals" },
+  /**
+   * §9.2 wants the form "one tap from everywhere", the same placement §6.5 gives
+   * the incident button. A panel on the landing surface is that tap, and it is
+   * admitted by the filing grant rather than by the register's.
+   */
+  { id: "file-near-miss", grant: "safety_report", title: "Report a near-miss" },
   { id: "open-safety", grant: "safety_manage", title: "Open safety items" },
   { id: "operating-level", grant: "programme", title: "Operating level" },
   { id: "applications", grant: "people_write", title: "Applications waiting" },

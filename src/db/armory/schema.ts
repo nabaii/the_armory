@@ -37,6 +37,9 @@ import {
   SPONSOR_TYPES,
   STAFF_GRANTS,
   STAFF_ROLES,
+  DEGRADATION_CAUSES,
+  NEAR_MISS_KINDS,
+  OPERATING_LEVELS,
   WAITLIST_STATUSES,
 } from "@/domain/enums";
 
@@ -149,6 +152,8 @@ const updatedAt = () =>
    src/server/armory/invitations.ts, which raises no charge and refuses no
    guest.
    ========================================================================= */
+
+export const operatingLevel = armory.enum("operating_level", OPERATING_LEVELS);
 
 export const clubSettings = armory.table(
   "club_settings",
@@ -263,10 +268,130 @@ export const clubSettings = armory.table(
      */
     tableCapacity: integer("table_capacity"),
 
+    /**
+     * WHERE THE CLUB IS ON THE DEGRADATION LADDER — Management §6.2.
+     *
+     * Defaults to `normal`, which is the one default in this table that is a
+     * real answer rather than an absence: a club that has said nothing about its
+     * operating level is running normally, and treating the unset case as
+     * "degraded" would close a range nobody closed.
+     *
+     * The CURRENT level lives here because every read of it is "what is true
+     * right now" and wants no join. The HISTORY lives in
+     * `operating_level_events`, and §6.2 is explicit that the history is the
+     * point: "the value of this control over a season is the record of why the
+     * club degraded".
+     */
+    operatingLevel: operatingLevel("operating_level").notNull().default("normal"),
+
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("club_settings_singleton_key").on(t.singleton)],
+);
+
+export const degradationCause = armory.enum("degradation_cause", DEGRADATION_CAUSES);
+
+/**
+ * EVERY MOVE OF THE OPERATING LEVEL — Management §6.2, §9.1, §11.3.
+ *
+ * ===========================================================================
+ * THIS TABLE IS THE FEATURE. THE COLUMN ABOVE IS ONLY ITS CURRENT VALUE
+ *
+ * §6.2: a reason is "not a free-text afterthought — a short required field,
+ * because the value of this control over a season is the record of why the club
+ * degraded, which is an operational analytic in §11.3 and a staffing argument
+ * the founder will otherwise have to make from memory."
+ *
+ * A club that only stored the current level would be able to answer "are we
+ * degraded" and never "how often, and why" — which is the question that decides
+ * whether to hire somebody. So the cause is a closed vocabulary that can be
+ * counted and the note carries the particulars, and both are mandatory.
+ *
+ * Append-only, enforced in 0012. A degradation somebody edited afterwards is
+ * worth less than one nobody recorded, because it looks trustworthy.
+ */
+export const operatingLevelEvents = armory.table(
+  "operating_level_events",
+  {
+    id: id(),
+
+    /** Null on the first event, which has nothing before it. */
+    fromLevel: operatingLevel("from_level"),
+    toLevel: operatingLevel("to_level").notNull(),
+
+    cause: degradationCause("cause").notNull(),
+    /** The particulars. §12.1's mandatory reason, with a 12-character floor. */
+    note: text("note").notNull(),
+
+    setByStaffId: uuid("set_by_staff_id").references(() => staffUsers.id, {
+      onDelete: "set null",
+    }),
+
+    createdAt: createdAt(),
+  },
+  (t) => [index("operating_level_events_created_idx").on(t.createdAt)],
+);
+
+export const nearMissKind = armory.enum("near_miss_kind", NEAR_MISS_KINDS);
+
+/**
+ * NEAR-MISSES — Management System §9.2, and S5.
+ *
+ * ===========================================================================
+ * WHAT IS NOT IN THIS TABLE IS THE DESIGN
+ *
+ * There is no severity, no outcome, no "who was at fault", and no link to a
+ * person other than an optional reporter. Each absence is a decision:
+ *
+ *   no severity   Somebody would argue about it, and arguing about a near-miss
+ *                 is how the next one goes unreported. §9.2 wants thirty
+ *                 seconds; a severity picker is a judgement call.
+ *   no subject    S5. "A reporting surface that is… attributive will produce
+ *                 silence." The form has nowhere to put a name because the
+ *                 table has nowhere to put one.
+ *   no outcome    A near-miss by definition had none. A column for it would
+ *                 invite this table to become a second incident register, and
+ *                 `incidents` already exists for events that happened.
+ *
+ * ===========================================================================
+ * THE REPORTER IS NULLABLE BECAUSE THEY CHOOSE
+ *
+ * Founder's decision, 17 August 2026: the reporter chooses per report. Named
+ * lets the safety holder ask a follow-up question; anonymous costs the club that
+ * conversation and buys a report it would otherwise not have had.
+ *
+ * Null therefore means "filed anonymously" and never "we lost track of who".
+ * Nothing in the application may infer a reporter from a session, a device or a
+ * timestamp — an anonymous report that can be de-anonymised is worse than none,
+ * because somebody trusted it.
+ */
+export const nearMissReports = armory.table(
+  "near_miss_reports",
+  {
+    id: id(),
+
+    kind: nearMissKind("kind").notNull(),
+
+    /** What happened. The only narrative field, and it asks what rather than who. */
+    whatHappened: text("what_happened").notNull(),
+
+    /** A lane or an area. Never a person. */
+    location: text("location"),
+
+    /**
+     * Null where the reporter filed anonymously — see the header. `on delete set
+     * null` matters more here than elsewhere: a staff member leaving the club
+     * must not take their near-miss reports with them, and the reports are worth
+     * keeping without them.
+     */
+    reportedByStaffId: uuid("reported_by_staff_id").references(() => staffUsers.id, {
+      onDelete: "set null",
+    }),
+
+    createdAt: createdAt(),
+  },
+  (t) => [index("near_miss_reports_created_idx").on(t.createdAt)],
 );
 
 /* ============================================================================
@@ -679,6 +804,34 @@ export const applications = armory.table(
     submittedAt: timestamp("submitted_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+
+    /**
+     * WHO IS CARRYING THIS APPLICATION — Management §8.2.
+     *
+     * =======================================================================
+     * IT IS NOT `decided_by_staff_id`, AND CONFLATING THEM WAS THE DEFECT
+     *
+     * §8.2: "*Applications land somewhere nobody owns* is on the blocker
+     * register… What the software can do is make ownerlessness impossible to
+     * ignore: every application carries a named owner and an age, and an
+     * application with no owner appears on the founder's DAY until it has one."
+     *
+     * `decided_by_staff_id` below records who CLOSED an application. It is null
+     * for every OPEN one by definition — which is exactly the set the queue is
+     * about — so reading it as ownership reports a queue in which every live
+     * application is unowned and every dead one is owned. Precisely backwards,
+     * and it would have looked like data.
+     *
+     * Nullable, and null is the honest state rather than a gap to be filled by
+     * a default. §8.2 is explicit that the underlying problem "is a staffing
+     * decision rather than a software one": assigning a rota, or defaulting to
+     * whoever happens to hold `people_write`, would produce a column that always
+     * has a value and never has an owner. The screen renders null as "Nobody",
+     * in red, and the founder's DAY carries it until a person is named.
+     */
+    ownerStaffId: uuid("owner_staff_id").references(() => staffUsers.id, {
+      onDelete: "set null",
+    }),
 
     decidedByStaffId: uuid("decided_by_staff_id"),
     decidedAt: timestamp("decided_at", { withTimezone: true }),

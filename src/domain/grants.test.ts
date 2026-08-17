@@ -333,6 +333,8 @@ describe("the founder exception is made expensive, not invisible", () => {
 
 describe("the navigation is generated, never written down twice", () => {
   it("gives front of house two surfaces", () => {
+    /* They can FILE a near-miss from THE DAY and cannot read the register — see
+       SURFACE_GRANTS.safety for why those are different grants. */
     assert.deepEqual(
       surfacesFor({
         role: "front_of_house",
@@ -358,10 +360,15 @@ describe("the navigation is generated, never written down twice", () => {
       grants: new Set(grantsForRole("armourer")),
     };
     assert.ok(!admitsSurface(armourer, "ledger"));
+    /* They reach SAFETY for the custody half of it — §9.1 puts custody
+       exceptions there — and read no near-miss narrative once inside. */
     assert.ok(admitsSurface(armourer, "safety"));
+    assert.ok(!new Set(grantsForRole("armourer")).has("safety_manage"));
   });
 
   it("keeps finance out of everything but the money", () => {
+    /* They hold `safety_report` so they can file a report like anybody else, and
+       that must not admit them to the safety register. */
     assert.deepEqual(
       surfacesFor({ role: "finance", grants: new Set(grantsForRole("finance")) }),
       ["day", "ledger", "intelligence"],
@@ -397,13 +404,25 @@ describe("THE DAY composes from the hand, not from the role", () => {
   it("gives front of house the desk panels and no money", () => {
     const panels = panelsFor({ role: "front_of_house", grants: new Set(grantsForRole("front_of_house")) }).map((p) => p.id);
     assert.ok(panels.includes("arrivals"));
+    assert.ok(panels.includes("file-near-miss"), "S5 — anybody working may report");
+    assert.ok(
+      panels.includes("expiries-today"),
+      "they are the first person a member with a lapsed licence walks past",
+    );
+    assert.ok(!panels.includes("open-safety"), "reading the register is not theirs");
     assert.ok(!panels.includes("takings"));
     assert.ok(!panels.includes("business-strip"));
   });
 
-  it("gives finance the money and nothing on the floor", () => {
+  it("gives finance the money, a way to report, and no floor", () => {
     const panels = panelsFor({ role: "finance", grants: new Set(grantsForRole("finance")) }).map((p) => p.id);
-    assert.deepEqual(panels, ["takings", "unreconciled", "business-strip"]);
+    assert.deepEqual(panels, [
+      "file-near-miss",
+      "takings",
+      "unreconciled",
+      "business-strip",
+    ]);
+    assert.ok(!panels.includes("coverage"), "finance has no floor to cover");
   });
 
   it("keeps the panel order fixed, so a screen read at speed does not move", () => {
