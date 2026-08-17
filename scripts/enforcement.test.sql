@@ -364,4 +364,75 @@ SELECT pg_temp.must_fail(
             'guest_overage', 'ps_ref_001', 'succeeded')$$,
   'a duplicate gateway reference cannot create a second payment');
 
+-- ===========================================================================
+-- 11. §12, Management §5.1 — the governance record is append-only
+--
+-- The separation of duties itself is enforced in src/domain/grants.ts, because
+-- S3 forbids a SET and a row constraint cannot see a set. What the database has
+-- to guarantee is that the RECORD of who held what cannot be rewritten — a
+-- deleted grant is a separation that was crossed and then tidied away, and the
+-- tidying is the part an auditor would most want to see.
+-- ===========================================================================
+
+INSERT INTO armory.staff_grants (id, staff_user_id, grant, reason)
+VALUES ('00000000-0000-7000-8000-000000000f01'::uuid,
+        '00000000-0000-7000-8000-000000000201'::uuid,
+        'custody',
+        'Covering the armoury from the first of the month.');
+
+SELECT pg_temp.must_fail(
+  $$DELETE FROM armory.staff_grants
+     WHERE id = '00000000-0000-7000-8000-000000000f01'$$,
+  'a grant cannot be deleted — it is revoked, and the history stays');
+
+SELECT pg_temp.must_fail(
+  $$UPDATE armory.staff_grants SET grant = 'ledger'
+     WHERE id = '00000000-0000-7000-8000-000000000f01'$$,
+  'a grant cannot be quietly changed into a different authority');
+
+SELECT pg_temp.must_fail(
+  $$UPDATE armory.staff_grants SET reason = 'Something else entirely, later.'
+     WHERE id = '00000000-0000-7000-8000-000000000f01'$$,
+  'the reason a grant was issued cannot be rewritten afterwards');
+
+SELECT pg_temp.must_fail(
+  $$INSERT INTO armory.staff_grants (staff_user_id, grant, reason)
+    VALUES ('00000000-0000-7000-8000-000000000201', 'ledger', 'ok')$$,
+  'a twelve-character reason floor a reflex tap cannot clear');
+
+SELECT pg_temp.must_fail(
+  $$INSERT INTO armory.staff_grants (staff_user_id, grant, reason)
+    VALUES ('00000000-0000-7000-8000-000000000201', 'custody',
+            'A second live grant of the same authority.')$$,
+  'the same authority cannot be held twice at once');
+
+-- Revocation is the one permitted write, and it happens once.
+UPDATE armory.staff_grants
+   SET revoked_at = now(), revoked_by_staff_id = '00000000-0000-7000-8000-000000000201'
+ WHERE id = '00000000-0000-7000-8000-000000000f01';
+
+SELECT pg_temp.must_fail(
+  $$UPDATE armory.staff_grants SET revoked_at = now() + interval '1 day'
+     WHERE id = '00000000-0000-7000-8000-000000000f01'$$,
+  'a revocation is recorded once and cannot be moved');
+
+-- And once revoked, the authority may be granted again — the partial index is
+-- what keeps the history without blocking the re-grant.
+INSERT INTO armory.staff_grants (staff_user_id, grant, reason)
+VALUES ('00000000-0000-7000-8000-000000000201'::uuid, 'custody',
+        'Back on the armoury after their leave.');
+
+SELECT pg_temp.must_equal(
+  (SELECT count(*)::text FROM armory.staff_grants
+    WHERE staff_user_id = '00000000-0000-7000-8000-000000000201'
+      AND grant = 'custody'),
+  '2',
+  'a grant given, taken back and given again leaves both rows');
+
+-- TRUNCATE bypasses row-level triggers. Without the statement-level guard the
+-- whole guarantee has a one-word bypass, invisible until somebody finds it.
+SELECT pg_temp.must_fail(
+  $$TRUNCATE armory.staff_grants$$,
+  'the grant register cannot be truncated');
+
 ROLLBACK;

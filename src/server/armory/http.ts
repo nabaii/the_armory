@@ -120,9 +120,40 @@ export const unavailable = (reason: string): Response =>
  * second device. A route that only checked "is there a session" would hand all
  * three the same powers and make the role decorative.
  */
+/**
+ * ===========================================================================
+ * THIS LADDER GOVERNS THE M0–M10 API AND NOTHING IN THE MANAGEMENT SYSTEM
+ *
+ * A total order over roles cannot express "custody and payment are never in the
+ * same hands" — an ordering has no way to say that two authorities are
+ * individually fine and jointly forbidden. That is why the management system's
+ * authority is a set of grants (src/domain/grants.ts) rather than a rank, and
+ * why nothing under the management route group consults this map.
+ *
+ * It stays because these routes exist and work. What matters when adding a role
+ * is the rule below.
+ *
+ * ===========================================================================
+ * A NEW ROLE NEVER CLEARS A GATE IT WAS NOT WEIGHED AGAINST
+ *
+ * The five roles added with the management system sit at the range officer's
+ * rank, not above it. Ranking `finance` or `duty_manager` between officer and
+ * founder would read as an org chart and would silently widen every
+ * `atLeast: "founder"` route in the codebase — a founder-only endpoint, such as
+ * erasing a person, would begin admitting the club's bookkeeper because
+ * somebody drew the hierarchy the way the org chart looks.
+ *
+ * So: founder is 2 and alone. Everything operational is 1. Anything that needs
+ * a finer distinction than that asks for a GRANT.
+ */
 const RANK: Record<StaffRole, number> = {
   read_only: 0,
+  front_of_house: 0,
   range_officer: 1,
+  armourer: 1,
+  duty_manager: 1,
+  finance: 1,
+  safety_officer: 1,
   founder: 2,
 };
 

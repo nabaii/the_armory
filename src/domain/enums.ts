@@ -70,8 +70,103 @@ export const LICENCE_STATUSES = [
 ] as const;
 export type LicenceStatus = (typeof LICENCE_STATUSES)[number];
 
-export const STAFF_ROLES = ["founder", "range_officer", "read_only"] as const;
+/**
+ * The named posts a member of staff can hold.
+ *
+ * ===========================================================================
+ * A ROLE IS A LABEL. A GRANT IS THE AUTHORITY — see STAFF_GRANTS below
+ *
+ * The first three existed from M0 and are load-bearing outside permission:
+ * `founder` is how `apply-credentials.ts` and `permits.ts` resolve the club's
+ * owner, by role rather than by a value somebody typed. They are kept.
+ *
+ * What changed with the management system is that a role no longer DECIDES
+ * anything. Management §5 requires the club's two structural separations to be
+ * refused by the system rather than promised in a charter, and a flat role
+ * column cannot express "custody and payment are never in the same hands"
+ * — it can only name a post and hope the naming is respected. So the authority
+ * moved to `staff_grants`, and this list became what it always read as: the
+ * club's org chart.
+ */
+export const STAFF_ROLES = [
+  "founder",
+  "range_officer",
+  "read_only",
+  "front_of_house",
+  "armourer",
+  "duty_manager",
+  "finance",
+  "safety_officer",
+] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
+
+/**
+ * WHAT A MEMBER OF STAFF MAY ACTUALLY DO — Management System §5, §18.
+ *
+ *   "No management screen evaluates a permission… staff permissions are the
+ *    mechanism by which the club's separation of duties is enforced. An inline
+ *    check in an administrative screen is not a shortcut; it is a hole in the
+ *    club's governance."
+ *
+ * ===========================================================================
+ * THE GRANT IS THE PRIMITIVE, AND THAT IS THE WHOLE DESIGN
+ *
+ * §18 makes the role model the first open decision and hands it to the founder
+ * on the grounds that S3 makes it a governance document rather than a
+ * configuration file. That is right about its standing and wrong about its
+ * shape: a system whose permission unit is a ROLE cannot express a duty manager
+ * covering the armoury for one evening without inventing a role — and the
+ * evening always wins, so somebody gets a permanent grant to solve a temporary
+ * problem and nobody ever takes it back.
+ *
+ * Grants are therefore the unit, roles are named bundles of them
+ * (`ROLE_BUNDLES` in src/domain/grants.ts), and a grant may carry an expiry.
+ *
+ * ===========================================================================
+ * WHY SOME OF THESE ARE SPLIT AND OTHERS ARE NOT
+ *
+ * Every split below exists because a FORBIDDEN COMBINATION needs it. Nothing is
+ * split for tidiness, because each division is a decision the founder has to
+ * make about a real person on a real evening.
+ *
+ *   people_read / people_write     Front of house needs the roster to answer a
+ *                                  question at the counter. Deciding an
+ *                                  application is a different act.
+ *   safety_report / safety_manage  S5: near-miss reporting must be open to ANY
+ *                                  member of staff in under thirty seconds. The
+ *                                  veto, the register and an incident's outcome
+ *                                  are not. Collapsing these would mean either
+ *                                  a range officer who cannot report, or a
+ *                                  reporting surface that carries the veto.
+ *   intelligence_operational /     S4: "a safety veto holder is never measured
+ *   intelligence_commercial        on commercial outcomes". Reporting health,
+ *                                  utilisation and coverage are the safety
+ *                                  officer's own evidence. Revenue is not.
+ *
+ * `custody` and `ledger` are deliberately NOT split. S3 is about hands on the
+ * record, and a read of the armoury register is already the safety surface's.
+ */
+export const STAFF_GRANTS = [
+  /** Check in, issue equipment, close the day. The console. */
+  "desk",
+  /** Author hours, service hours, events and closures; take and amend bookings. */
+  "programme",
+  "people_read",
+  "people_write",
+  /** The armoury register and every firearm movement. */
+  "custody",
+  /** File a near-miss or an incident. Open to any staff member — S5. */
+  "safety_report",
+  /** The safety veto, the expiry register, and an incident's outcome. */
+  "safety_manage",
+  /** Charges, reconciliation, balances, takings. */
+  "ledger",
+  "intelligence_operational",
+  "intelligence_commercial",
+  /** Assigning and revoking every grant above. Including these. */
+  "grants",
+] as const;
+export type StaffGrant = (typeof STAFF_GRANTS)[number];
 
 export const DEVICE_SURFACES = ["desk", "lane"] as const;
 export type DeviceSurface = (typeof DEVICE_SURFACES)[number];

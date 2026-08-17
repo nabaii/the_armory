@@ -35,6 +35,7 @@ import {
   PROGRAMME_KINDS,
   SESSION_STATUSES,
   SPONSOR_TYPES,
+  STAFF_GRANTS,
   STAFF_ROLES,
   WAITLIST_STATUSES,
 } from "@/domain/enums";
@@ -984,6 +985,105 @@ export const staffUsers = armory.table(
   (t) => [
     uniqueIndex("staff_users_person_key").on(t.personId),
     index("staff_users_role_idx").on(t.role),
+  ],
+);
+
+export const staffGrant = armory.enum("staff_grant", STAFF_GRANTS);
+
+/**
+ * WHAT A MEMBER OF STAFF MAY DO — Management System §5, §18.
+ *
+ * §5.1: "Separation of duties becomes visible, and refused rather than trusted…
+ * Generated into the navigation, they are facts. A person holding armoury
+ * custody does not see LEDGER — not because it is hidden, but because
+ * capability refuses it. And the system refuses the role assignment itself at
+ * the point it is made."
+ *
+ * ===========================================================================
+ * WHY THIS IS A TABLE AND NOT MORE COLUMNS ON staff_users
+ *
+ * `staff_users.role` is a single value and stays what it always was: the club's
+ * org chart, and the way `apply-credentials.ts` and `permits.ts` resolve the
+ * founder. It cannot carry authority, for three reasons that are all the same
+ * reason — a role is a label and authority has a lifetime.
+ *
+ * 1. A GRANT EXPIRES. §4.3's console hand-off assumes a duty manager exists to
+ *    hand off to; on a real understaffed evening there is not one. The failure
+ *    is not that the club is blocked, it is that somebody is given a PERMANENT
+ *    grant to solve a TEMPORARY problem and nobody takes it back. `expires_at`
+ *    is the whole fix, and a column on `staff_users` could not hold it.
+ *
+ * 2. A GRANT IS ATTRIBUTED. §12.1 lists role assignment among the actions that
+ *    must always carry a reason. Who granted it, when, and why is the register
+ *    that makes the founder exception visible — and it has to be a row.
+ *
+ * 3. A GRANT IS REVOKED, NOT DELETED. A deleted row is a separation that was
+ *    crossed and then tidied away. `revoked_at` keeps the history, which is
+ *    what an auditor is actually asking for.
+ *
+ * ===========================================================================
+ * THE FORBIDDEN COMBINATIONS ARE NOT ENFORCED HERE, AND CANNOT BE
+ *
+ * §12 asks for database-level enforcement wherever it is possible, and 0002
+ * delivers it for the append-only tables. This is the case where it is not
+ * possible honestly: S3 forbids a SET — custody together with ledger — and a
+ * row constraint cannot see a set. A trigger counting sibling rows could, and
+ * would be a second implementation of `refuseCombination` in PL/pgSQL, which
+ * is the duplication the README's warning about `firearms.status` exists to
+ * discourage. One rule, in src/domain/grants.ts, called by the one server
+ * module that writes here.
+ */
+export const staffGrants = armory.table(
+  "staff_grants",
+  {
+    id: id(),
+    staffUserId: uuid("staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "cascade" }),
+
+    grant: staffGrant("grant").notNull(),
+
+    /**
+     * Null only where the club bootstrapped itself — the founder's own first
+     * grants have nobody to attribute them to. Every later row names a person.
+     */
+    grantedByStaffId: uuid("granted_by_staff_id").references(() => staffUsers.id, {
+      onDelete: "set null",
+    }),
+
+    /** §12.1. Mandatory, and `decideGrant` refuses anything under 12 characters. */
+    reason: text("reason").notNull(),
+
+    /**
+     * When an acting grant lapses. Null is a standing grant.
+     *
+     * Read against the clock on every request rather than swept by a job. §15
+     * requires capability to be "re-evaluated per request, not per session", and
+     * a swept column would mean an acting grant expiring whenever the sweep next
+     * ran — which on the evening it matters is not when it was promised to.
+     */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedByStaffId: uuid("revoked_by_staff_id").references(() => staffUsers.id, {
+      onDelete: "set null",
+    }),
+
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("staff_grants_staff_idx").on(t.staffUserId),
+    index("staff_grants_expiry_idx").on(t.expiresAt),
+    /**
+     * One LIVE row per person per grant.
+     *
+     * Partial on `revoked_at IS NULL`, so the history of a grant given, taken
+     * back and given again is kept — which is exactly the sequence a register
+     * exists to show — while the same authority cannot be held twice at once.
+     */
+    uniqueIndex("staff_grants_live_key")
+      .on(t.staffUserId, t.grant)
+      .where(sql`${t.revokedAt} IS NULL`),
   ],
 );
 
