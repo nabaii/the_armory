@@ -276,6 +276,43 @@ export const contentGate: GateItem[] = [
       "most.",
   },
   {
+    id: "application-owner",
+    label: "Applications have no owner column, so every one reads unowned",
+    owner: "Build team",
+    resolved: false,
+    severity: "degraded",
+    note:
+      "Management System §8.2: 'every application carries a named owner and an " +
+      "age, and an application with no owner appears on the founder's DAY " +
+      "until it has one'. The age is built. The owner is not, because " +
+      "`applications` has only `decided_by_staff_id` — who CLOSED an " +
+      "application, which says nothing about who is carrying it. Reading that " +
+      "column as ownership would report a healthy queue in which every OPEN " +
+      "application is unowned, which is the exact failure `membership-owner` " +
+      "names. So /manage/people renders the column and fills it with 'Nobody' " +
+      "for every row, which is true. Needs one nullable column and a control " +
+      "to set it; the staffing half is `membership-owner` and is not software.",
+  },
+  {
+    id: "manage-shared-device",
+    label: "Management on a shared counter device has no short session",
+    owner: "Build team",
+    resolved: false,
+    severity: "degraded",
+    note:
+      "Management System §12.3: 'Where a device is shared — a front-of-house " +
+      "tablet that is not the console — sessions are short and " +
+      "re-authentication is quick, because the alternative is a permanently " +
+      "signed-in device on a public counter.' /manage authenticates with the " +
+      "member session, which is long because it is built for a member's own " +
+      "phone. That is fine for the personal devices §4 describes and is NOT " +
+      "fine for a shared counter tablet. The answer is §4.1's console " +
+      "hand-off: a single-purpose, minutes-long, device-bound session issued " +
+      "by the console, carrying the one action it was opened for and no " +
+      "refresh token. Until it ships, the club should not put management on a " +
+      "shared device — a posture decision, recorded here rather than assumed.",
+  },
+  {
     id: "kitchen-hours",
     label: "When does the kitchen and bar actually serve?",
     owner: "Founder",
