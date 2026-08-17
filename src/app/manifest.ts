@@ -41,7 +41,24 @@ export default function manifest(): MetadataRoute.Manifest {
        booking confirmation stays inside the app rather than kicking the member
        out to a browser mid-flow. */
     id: "/",
-    start_url: "/",
+    /**
+     * NOT `/`, AND THE DIFFERENCE IS WHAT THE ICON IS FOR.
+     *
+     * This was `/`, so tapping the installed icon opened the marketing hero —
+     * the club arguing its case — at a member who had already joined and
+     * installed the app on purpose. Their only way through was to notice
+     * ACCOUNT in the bottom bar.
+     *
+     * `/launch` decides on the server, with the session cookie in hand: a
+     * member gets Today, a visitor gets the homepage. The full argument, and
+     * the reason this cannot just point at `/portal`, is in that route.
+     *
+     * `id` deliberately stays `/`. It is what identifies the installed app, so
+     * changing it would make this look like a different app to a browser that
+     * has already installed the old one — a second icon rather than an updated
+     * one.
+     */
+    start_url: "/launch",
     scope: "/",
 
     display: "standalone",
