@@ -136,6 +136,35 @@ export const routes = {
   leagueJoin: "/portal/leagues/join",
   /** A specific league. Private — the repository scopes reads by membership. */
   league: (id: string) => `/portal/leagues/${id}`,
+
+  /* ------------------------------------------------------------------------
+     THE MANAGEMENT SYSTEM — its own route group, guarded in the layout and
+     generated from capability.
+
+     Management §4 is emphatic that this is not the desk console and must never
+     become it: a personal device rather than a fixed tablet, online rather than
+     offline-first, sitting down rather than standing with somebody waiting.
+     They share the domain and never an interface.
+
+     Every one of these is noindex, uncached and linked from nothing public —
+     the same treatment /portal already has, and for a stronger reason, since
+     these screens carry more personal data than any other surface in the
+     product.
+     --------------------------------------------------------------------- */
+  /** THE DAY. The landing surface for every role — §6. */
+  manage: "/manage",
+  /** The programme and the booking book — §7. */
+  manageDiary: "/manage/diary",
+  /** Members, applications, guests, compliance — §8. */
+  managePeople: "/manage/people",
+  /** One person, everything — §8.4. The screen staff actually live in. */
+  managePerson: (id: string) => `/manage/people/${id}`,
+  /** Incidents, near-misses, custody exceptions, the expiry register — §9. */
+  manageSafety: "/manage/safety",
+  /** Charges, reconciliation, balances, takings — §10. */
+  manageLedger: "/manage/ledger",
+  /** KPIs and the two numbers that can falsify the strategy — §11. */
+  manageIntelligence: "/manage/intelligence",
 } as const;
 
 /* ---------------------------------------------------------------------------

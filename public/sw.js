@@ -117,7 +117,7 @@ const PRECACHE = ["/offline", "/icons/icon-192.png"];
  * the member's phone precisely because neither of them is allowed to decide
  * that question alone.
  */
-const NEVER_CACHE = ["/portal", "/sign-in", "/api/", "/screen", "/console"];
+const NEVER_CACHE = ["/portal", "/sign-in", "/api/", "/screen", "/console", "/manage"];
 
 /**
  * §13.3 — "NOT ALL DATA MAY BE TREATED ALIKE", RECONCILED WITH THIS WORKER
