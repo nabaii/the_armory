@@ -1,5 +1,12 @@
 import Link from "next/link";
 import { panelsFor, type DayPanel } from "@/domain/grants";
+import { maySetLevel } from "@/domain/operating";
+import { revenueMix } from "@/domain/revenue";
+import { ZERO, format } from "@/lib/money";
+import { addDays } from "@/lib/time";
+import { NearMissForm } from "@/components/manage/NearMissForm";
+import { OperatingLevelControl } from "@/components/manage/OperatingLevelControl";
+import { TakeApplication } from "@/components/manage/TakeApplication";
 import { gateSummary, outstanding } from "@/lib/content-gate";
 import { routes } from "@/lib/site";
 import { lagosDateKey } from "@/lib/time";
@@ -8,7 +15,10 @@ import {
   type ApplicationRow,
   type ArrivalRow,
   type ExpiryRow,
+  type OperatingLevelValue,
+  type RevenueChargeRow,
 } from "@/server/armory/manage-reads";
+import type { StaffPrincipal } from "@/server/armory/grants";
 import { requireStaffPrincipal } from "@/server/armory/manage-session";
 import { manageSource } from "@/server/armory/manage-source";
 
@@ -53,10 +63,14 @@ export default async function TheDay() {
      this holds a source rather than a `db`. */
   const source = await manageSource(principal);
 
-  const [arrivals, applications, expiries] = await Promise.all([
+  const [arrivals, applications, expiries, charges, level] = await Promise.all([
     shown.has("arrivals") ? source.arrivals(now) : null,
     shown.has("applications") ? source.applications(now) : null,
     shown.has("expiries-today") ? source.expiries(now, 30) : null,
+    shown.has("takings") || shown.has("business-strip")
+      ? source.charges(addDays(now, -30))
+      : null,
+    shown.has("operating-level") ? source.currentLevel() : null,
   ]);
 
   return (
@@ -73,9 +87,12 @@ export default async function TheDay() {
           <PanelBody
             key={panel.id}
             panel={panel}
+            principal={principal}
             arrivals={arrivals}
             applications={applications}
             expiries={expiries}
+            charges={charges}
+            level={level}
           />
         ))}
       </div>
@@ -92,21 +109,33 @@ export default async function TheDay() {
  */
 function PanelBody({
   panel,
+  principal,
   arrivals,
   applications,
   expiries,
+  charges,
+  level,
 }: {
   panel: DayPanel;
+  principal: StaffPrincipal;
   arrivals: ArrivalRow[] | null;
   applications: ApplicationRow[] | null;
   expiries: ExpiryRow[] | null;
+  charges: RevenueChargeRow[] | null;
+  level: OperatingLevelValue | null;
 }) {
   switch (panel.id) {
     case "arrivals":
       return <ArrivalsPanel title={panel.title} rows={arrivals ?? []} />;
 
     case "applications":
-      return <ApplicationsPanel title={panel.title} rows={applications ?? []} />;
+      return (
+        <ApplicationsPanel
+          title={panel.title}
+          rows={applications ?? []}
+          staffUserId={principal.staffUserId}
+        />
+      );
 
     case "expiries-today":
       return <ExpiriesPanel title={panel.title} rows={expiries ?? []} />;
@@ -127,22 +156,44 @@ function PanelBody({
     case "walk-ups":
       return <NotBuilt title={panel.title} line="Members who arrived unbooked and need a decision." />;
     case "coverage":
-      return <NotBuilt title={panel.title} line="Lanes, relays and officer coverage against tonight's demand." />;
-    case "open-safety":
-      return <NotBuilt title={panel.title} line="Incidents and near-misses still open. Needs the near-miss form." />;
-    case "operating-level":
-      return <NotBuilt title={panel.title} line="The degradation ladder as a switch — §6.2." />;
-    case "takings":
-      return <NotBuilt title={panel.title} line="Yesterday, by category. Needs a day of categorised charges first." />;
-    case "unreconciled":
-      return <NotBuilt title={panel.title} line="Paystack against the ledger. The sweep is a security blocker." />;
-    case "business-strip":
+      return <CoveragePanel title={panel.title} rows={arrivals ?? []} />;
+
+    /* §9.2 wants the form one tap from everywhere. This is the tap. */
+    case "file-near-miss":
       return (
-        <NotBuilt
+        <Panel title={panel.title}>
+          <NearMissForm />
+        </Panel>
+      );
+
+    case "operating-level":
+      return (
+        <Panel title={panel.title} needsDecision={(level ?? "normal") !== "normal"}>
+          <OperatingLevelControl
+            current={level ?? "normal"}
+            maySet={maySetLevel(principal.grants)}
+          />
+        </Panel>
+      );
+
+    case "takings":
+      return <TakingsPanel title={panel.title} charges={charges ?? []} />;
+
+    case "business-strip":
+      return <BusinessPanel title={panel.title} charges={charges ?? []} />;
+
+    case "open-safety":
+      return (
+        <Panel
           title={panel.title}
-          line="The two falsifying numbers. Capture began this sprint; they need a quarter behind them to mean anything."
+          empty={{
+            kind: "not_built",
+            line: "Incidents still open, from M7's lane records. The near-miss register is on SAFETY.",
+          }}
         />
       );
+    case "unreconciled":
+      return <NotBuilt title={panel.title} line="Paystack against the ledger. The sweep is a security blocker." />;
   }
 }
 
@@ -190,7 +241,15 @@ function ArrivalsPanel({ title, rows }: { title: string; rows: ArrivalRow[] }) {
   );
 }
 
-function ApplicationsPanel({ title, rows }: { title: string; rows: ApplicationRow[] }) {
+function ApplicationsPanel({
+  title,
+  rows,
+  staffUserId,
+}: {
+  title: string;
+  rows: ApplicationRow[];
+  staffUserId: string;
+}) {
   if (rows.length === 0) {
     return (
       <Panel
@@ -202,26 +261,204 @@ function ApplicationsPanel({ title, rows }: { title: string; rows: ApplicationRo
 
   /**
    * §8.2: "an application with no owner appears on the founder's DAY until it
-   * has one." Every open application is unowned today, because the column does
-   * not exist — see `ApplicationRow.ownerStaffId`. So this panel always needs a
-   * decision, which is true and is exactly what the blocker register says.
+   * has one." So the panel needs a decision exactly while something is unowned,
+   * and stops shouting once every application has a name against it.
    */
+  const unowned = rows.filter((row) => row.ownerStaffId === null);
+
   return (
-    <Panel title={title} count={rows.length} needsDecision>
+    <Panel title={title} count={rows.length} needsDecision={unowned.length > 0}>
       <ul className="flex flex-col gap-1">
         {rows.slice(0, 8).map((row) => (
           <li key={row.id} className="flex items-baseline gap-2">
             <span className="truncate">{row.name}</span>
-            <span className="ml-auto shrink-0 tabular-nums text-sight-ink">
+            <span
+              data-numeric
+              className={`ml-auto shrink-0 tabular-nums ${
+                row.ageDays > 14 ? "text-ten-ring-deep" : "text-sight-ink"
+              }`}
+            >
               {row.ageDays}d
             </span>
+            <TakeApplication
+              applicationId={row.id}
+              ownedByMe={row.ownerStaffId === staffUserId}
+              ownerName={row.ownerName}
+            />
           </li>
         ))}
       </ul>
-      <p className="mt-1 text-[11px] text-ten-ring-deep">
-        {rows.length === 1 ? "This application has" : "These applications have"} no
-        named owner.
+      {unowned.length > 0 && (
+        <p className="mt-1 text-[11px] text-ten-ring-deep">
+          {unowned.length} of these {rows.length === 1 ? "has" : "have"} nobody
+          carrying {unowned.length === 1 ? "it" : "them"}.
+        </p>
+      )}
+    </Panel>
+  );
+}
+
+/* ============================================================================
+   COVERAGE — §6.1, the range officer's panel
+   ========================================================================= */
+
+function CoveragePanel({ title, rows }: { title: string; rows: ArrivalRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <Panel
+        title={title}
+        empty={{ kind: "clear", line: "Nothing booked, so nothing to cover." }}
+      />
+    );
+  }
+
+  /* Demand by discipline, which is what "coverage" means to somebody deciding
+     whether tonight needs a second officer. Table bookings are counted apart —
+     they need a cover rather than a firing point. */
+  const byDiscipline = new Map<string, number>();
+  let tables = 0;
+
+  for (const row of rows) {
+    if (row.discipline) {
+      byDiscipline.set(row.discipline, (byDiscipline.get(row.discipline) ?? 0) + 1);
+    }
+    if (row.bookingType === "table" || row.bookingType === "both") tables += 1;
+  }
+
+  return (
+    <Panel title={title} count={rows.length}>
+      <ul className="flex flex-col gap-1">
+        {[...byDiscipline.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([discipline, count]) => (
+            <li key={discipline} className="flex items-baseline gap-2">
+              <span>{discipline}</span>
+              <span data-numeric className="ml-auto tabular-nums">
+                {count}
+              </span>
+            </li>
+          ))}
+        {tables > 0 && (
+          <li className="flex items-baseline gap-2 border-t border-sight-grey/25 pt-1">
+            <span className="text-sight-ink">At the tables</span>
+            <span data-numeric className="ml-auto tabular-nums text-sight-ink">
+              {tables}
+            </span>
+          </li>
+        )}
+      </ul>
+      <p className="mt-1 text-[11px] leading-snug text-sight-ink">
+        Officer coverage is declared per opening period, not rostered here — §13
+        keeps the rota out of the system.
       </p>
+    </Panel>
+  );
+}
+
+/* ============================================================================
+   MONEY ON THE DAY — §6.1, finance and the founder
+   ========================================================================= */
+
+function TakingsPanel({
+  title,
+  charges,
+}: {
+  title: string;
+  charges: RevenueChargeRow[];
+}) {
+  const now = new Date();
+  const mix = revenueMix(charges, { from: addDays(now, -30), to: now });
+
+  if (mix.count === 0) {
+    return (
+      <Panel
+        title={title}
+        empty={{ kind: "clear", line: "No charges raised in the last 30 days." }}
+      />
+    );
+  }
+
+  return (
+    <Panel title={title} count={mix.count} needsDecision={mix.hasUncategorised}>
+      <ul className="flex flex-col gap-1">
+        {mix.lines
+          .filter((line) => line.count > 0)
+          .map((line) => (
+            <li key={line.category} className="flex items-baseline gap-2">
+              <span className="capitalize">{line.category}</span>
+              <span data-numeric className="ml-auto tabular-nums">
+                {format(line.amountKobo)}
+              </span>
+            </li>
+          ))}
+      </ul>
+      <Link
+        href={routes.manageLedger}
+        className="mt-1 inline-block border-b border-sight-grey pb-[1px] text-[11px] text-sight-ink"
+      >
+        The ledger
+      </Link>
+    </Panel>
+  );
+}
+
+/**
+ * THE FOUNDER'S BUSINESS STRIP — §6.1.
+ *
+ * Two lines, and they are §11.2's two falsifying numbers rather than a revenue
+ * total. A founder's DAY should carry the figures that could change the club's
+ * strategy, not the ones that make it look busy.
+ */
+function BusinessPanel({
+  title,
+  charges,
+}: {
+  title: string;
+  charges: RevenueChargeRow[];
+}) {
+  const now = new Date();
+  const mix = revenueMix(charges, { from: addDays(now, -30), to: now });
+  const fnb = mix.lines.find((line) => line.category === "fnb");
+  const range = mix.lines.find((line) => line.category === "range");
+
+  if (mix.count === 0) {
+    return (
+      <Panel
+        title={title}
+        empty={{
+          kind: "clear",
+          line: "Nothing traded in the last 30 days, so there is no mix to read.",
+        }}
+      />
+    );
+  }
+
+  return (
+    <Panel title={title} count={mix.count}>
+      <ul className="flex flex-col gap-1">
+        <li className="flex items-baseline gap-2">
+          <span>Food and drink</span>
+          <span data-numeric className="ml-auto tabular-nums">
+            {format(fnb?.amountKobo ?? ZERO)}
+          </span>
+        </li>
+        <li className="flex items-baseline gap-2">
+          <span>Range</span>
+          <span data-numeric className="ml-auto tabular-nums">
+            {format(range?.amountKobo ?? ZERO)}
+          </span>
+        </li>
+      </ul>
+      <p className="mt-1 text-[11px] leading-snug text-sight-ink">
+        A club whose food and drink line is trivial is a range with a bar. Read it
+        against a quarter, never a day — §11.1.
+      </p>
+      <Link
+        href={routes.manageIntelligence}
+        className="mt-1 inline-block border-b border-sight-grey pb-[1px] text-[11px] text-sight-ink"
+      >
+        The figures
+      </Link>
     </Panel>
   );
 }

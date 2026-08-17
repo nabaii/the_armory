@@ -903,3 +903,34 @@ export async function checkInDurations(
         (row.checkedInAt.getTime() - (row.arrivalAt as Date).getTime()) / 1000,
     );
 }
+
+/* ============================================================================
+   SERVICE HOURS — Management §7.1, finding F3
+   ========================================================================= */
+
+/**
+ * The club's service windows, Sunday first.
+ *
+ * A separate read from `clubAvailabilityPolicy`, which assembles these for the
+ * booking grid. This one is for the AUTHORING screen and returns them raw, so a
+ * founder editing the week sees exactly the rows the database holds rather than
+ * a policy's interpretation of them.
+ */
+export async function serviceWindows(db: ArmoryReader): Promise<
+  readonly {
+    weekday: number;
+    opens: number;
+    closes: number;
+    label: string | null;
+  }[]
+> {
+  return db
+    .select({
+      weekday: schema.serviceHours.weekday,
+      opens: schema.serviceHours.opensMinute,
+      closes: schema.serviceHours.closesMinute,
+      label: schema.serviceHours.label,
+    })
+    .from(schema.serviceHours)
+    .orderBy(asc(schema.serviceHours.weekday), asc(schema.serviceHours.opensMinute));
+}

@@ -94,6 +94,23 @@ export type ManageSource = {
    * invented freely, because a history is read rather than acted upon.
    */
   readonly currentLevel: () => Promise<live.OperatingLevelValue>;
+  /**
+   * The club's service windows — F3.
+   *
+   * NOT faked in demonstration mode, and this is the second exception alongside
+   * the operating level. It is a founder's authoring surface: showing invented
+   * kitchen hours on the screen where somebody publishes real ones would invite
+   * them to edit a week that does not exist and wonder why the portal never
+   * changed.
+   */
+  readonly serviceHours: () => Promise<
+    readonly {
+      weekday: number;
+      opens: number;
+      closes: number;
+      label: string | null;
+    }[]
+  >;
 };
 
 export function sourceFor(useDemo: boolean): ManageSource {
@@ -110,8 +127,8 @@ export function sourceFor(useDemo: boolean): ManageSource {
       person: async (personId) => demo.demoPerson(personId),
       charges: async (since) =>
         demo.demoCharges(new Date()).filter((row) => row.raisedAt >= since),
-      balances: async (now) => demo.demoBalances(now),
-      failedPayments: async () => demo.demoFailedPayments(new Date()),
+      balances: async () => demo.demoBalances(),
+      failedPayments: async () => demo.demoFailedPayments(),
       levelHistory: async (since) =>
         demo.demoLevelHistory(new Date()).filter((row) => row.at >= since),
       nearMisses: async (since) =>
@@ -125,6 +142,7 @@ export function sourceFor(useDemo: boolean): ManageSource {
       },
       checkInDurations: async () => demo.demoCheckInDurations(),
       currentLevel: async () => "normal",
+      serviceHours: () => live.serviceWindows(getArmoryDb()),
     };
   }
 
@@ -145,6 +163,7 @@ export function sourceFor(useDemo: boolean): ManageSource {
     visitEvidence: (since) => live.visitEvidence(db, { since }),
     checkInDurations: (since) => live.checkInDurations(db, { since }),
     currentLevel: () => live.currentLevel(db),
+    serviceHours: () => live.serviceWindows(db),
   };
 }
 

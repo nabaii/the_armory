@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { admitsSurface } from "@/domain/grants";
 import { Panel } from "@/components/manage/Panel";
+import { ServiceHoursForm } from "@/components/manage/ServiceHoursForm";
 import { requireStaffPrincipal } from "@/server/armory/manage-session";
+import { manageSource } from "@/server/armory/manage-source";
 
 /**
  * DIARY — Management System §7. The programme, and the booking book.
@@ -28,6 +30,9 @@ export default async function Diary() {
   const principal = await requireStaffPrincipal();
   if (!admitsSurface(principal, "diary")) notFound();
 
+  const source = await manageSource(principal);
+  const service = await source.serviceHours();
+
   return (
     <div className="mx-auto flex max-w-[1100px] flex-col gap-3 p-2 lg:p-3">
       <header className="flex flex-col gap-1">
@@ -46,14 +51,16 @@ export default async function Diary() {
               "The club publishes 9 to 6, every day, from src/content/club-week.ts. Editing it means running db:hours, which is a terminal and not a screen.",
           }}
         />
+        {/* The one authoring surface that is BUILT — F3, and the decision the
+            founder has not yet taken. Publishing here is what makes a cover
+            bookable, alongside a count of covers. */}
         <Panel
           title="Service hours"
-          empty={{
-            kind: "unauthored",
-            line:
-              "When the kitchen and bar serve. The table exists and is empty, so no cover can be booked — which is correct until somebody says when the club serves.",
-          }}
-        />
+          count={service.length}
+          needsDecision={service.length === 0}
+        >
+          <ServiceHoursForm current={service} />
+        </Panel>
         <Panel
           title="Events and closures"
           empty={{

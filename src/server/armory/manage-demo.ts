@@ -375,7 +375,7 @@ export function demoCharges(now: Date): RevenueCharge[] {
   return charges;
 }
 
-export function demoBalances(now: Date): BalanceRow[] {
+export function demoBalances(): BalanceRow[] {
   const r = rng(7);
   const roster = demoRoster();
 
@@ -393,9 +393,12 @@ export function demoBalances(now: Date): BalanceRow[] {
   }).sort((a, b) => b.ageDays - a.ageDays);
 }
 
-export function demoFailedPayments(now: Date): FailedPaymentRow[] {
+export function demoFailedPayments(): FailedPaymentRow[] {
   const r = rng(8);
   const roster = demoRoster();
+  /* Anchored rather than taken from the clock, so the list is stable across
+     renders for the same reason everything else here is. */
+  const anchor = new Date("2026-08-17T00:00:00Z");
 
   return Array.from({ length: 4 }, (_, index) => {
     const member = roster[(index * 29) % roster.length];
@@ -405,7 +408,7 @@ export function demoFailedPayments(now: Date): FailedPaymentRow[] {
       name: member.name,
       amountKobo: naira(r.int(5, 120) * 1000),
       purpose: r.pick(["subscription", "guest_overage", "bar"]),
-      at: addDays(now, -r.int(1, 20)),
+      at: addDays(anchor, -r.int(1, 20)),
       gatewayReference: `ps_demo_${1000 + index}`,
     };
   }).sort((a, b) => b.at.getTime() - a.at.getTime());
