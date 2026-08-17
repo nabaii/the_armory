@@ -402,7 +402,11 @@ function NextBooking({ booking, now }: { booking: MemberBooking; now: Date }) {
 
       {amendable && (
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button href={routes.portalBook} variant="secondary">
+          {/* The booking it is talking about, not the club's week. This button
+              linked to the Diary — a calendar with none of the member's own
+              bookings on it and nothing to cancel — which is a label promising
+              a surface that did not exist. */}
+          <Button href={routes.portalBooking(booking.id)} variant="secondary">
             Change or cancel
           </Button>
         </div>

@@ -31,11 +31,13 @@
  * the portal with the price shown. Never discovered at the desk."
  */
 
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { evaluate } from "@/domain/capability";
 import { uuidv7 } from "@/lib/uuidv7";
 import { log } from "@/server/log";
 import { applyInvitationEvent, issueInvitation } from "@/server/armory/invitations";
+import { getArmoryDb, schema } from "@/db/armory/client";
 import { resolveArmoryMember } from "@/server/armory/member-session";
 import { record } from "@/server/armory/record";
 import { PostgresRecordStore } from "@/server/armory/postgres-store";
@@ -184,6 +186,43 @@ export async function cancelInvitation(
 
   const invitationId = String(form.get("invitationId") ?? "");
   if (!invitationId) return { ok: false, formError: "Choose an invitation to cancel." };
+
+  /**
+   * WHOSE INVITATION IS THIS?
+   *
+   * It did not ask. The id arrives in a form post from a browser, so it is
+   * whatever the sender typed, and `applyInvitationEvent` reads the invitation
+   * by id and never compares its `hostMembershipId` to the caller — it cannot,
+   * because it is also the desk's function and an officer acting at the counter
+   * has staff authority and only the id.
+   *
+   * The consequence was that any signed-in member could cancel any other
+   * member's guest by supplying that guest's invitation id: the host would lose
+   * a guest they had invited, the guest's link would stop working, and the
+   * allowance would move on somebody else's say-so. Nothing in the receipt
+   * would look wrong, because the operation itself is legitimate.
+   *
+   * Found while building the booking cancel next door, which needed the same
+   * guarantee and got it by scoping the READ — see `memberBookingById`. This
+   * path cannot be rewritten that way without reshaping `applyInvitationEvent`,
+   * so it asks the question explicitly, before it acts, in the same request.
+   */
+  const [owned] = await getArmoryDb()
+    .select({ id: schema.guestInvitations.id })
+    .from(schema.guestInvitations)
+    .where(
+      and(
+        eq(schema.guestInvitations.id, invitationId),
+        eq(schema.guestInvitations.hostMembershipId, resolution.member.membershipId),
+      ),
+    )
+    .limit(1);
+
+  /* The same answer a made-up id gets. Distinguishing "not yours" from "no such
+     invitation" would confirm to somebody probing ids that one exists. */
+  if (!owned) {
+    return { ok: false, formError: "That invitation is not on your file." };
+  }
 
   const outcome = await record(
     store,

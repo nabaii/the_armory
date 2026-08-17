@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getArmoryDb, isArmoryDatabaseConfigured } from "@/db/armory/client";
 import {
   availableSlots,
@@ -594,12 +595,21 @@ function YourBookings({
       <ul className="flex flex-col gap-3">
         {onThisDay.map((booking) => (
           <li key={booking.id}>
-            <Body>
-              {formatTime(booking.slotStart)} ·{" "}
-              {booking.discipline ?? "A table"}
-              {booking.companions.length > 0 &&
-                ` · with ${booking.companions.map((c) => c.name).join(", ")}`}
-            </Body>
+            {/* A member looking at a day they are already coming in on is one
+                tap from the booking itself — which is where cancelling lives.
+                Before this the row was inert text and the only route to it was
+                Today's next-booking card, which shows one booking. */}
+            <Link
+              href={routes.portalBooking(booking.id)}
+              className="no-underline hover:underline"
+            >
+              <Body>
+                {formatTime(booking.slotStart)} ·{" "}
+                {booking.discipline ?? "A table"}
+                {booking.companions.length > 0 &&
+                  ` · with ${booking.companions.map((c) => c.name).join(", ")}`}
+              </Body>
+            </Link>
           </li>
         ))}
       </ul>

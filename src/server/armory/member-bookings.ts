@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, inArray, ne } from "drizzle-orm";
 import type { ArmoryReader } from "@/db/armory/client";
 import { schema } from "@/db/armory/client";
-import type { BookingType } from "@/domain/enums";
+import type { BookingStatus, BookingType } from "@/domain/enums";
 
 /**
  * THE MEMBER'S OWN BOOKINGS — Members Portal §6.1's next-booking card, and the
@@ -125,6 +125,87 @@ export async function upcomingBookingsFor(
         })),
     };
   });
+}
+
+/**
+ * One booking, and only if it is this member's.
+ *
+ * ===========================================================================
+ * THE MEMBERSHIP IS IN THE WHERE CLAUSE, NOT IN A CHECK AFTERWARDS
+ *
+ * This is the read behind the booking detail screen and behind cancellation,
+ * which means it is the read that decides whether one member can act on
+ * another's booking. Written as a lookup by id followed by an `if` comparing
+ * the owner, that decision lives in whoever remembers to write the `if` — and
+ * the invitation cancel path in `hosting.ts` is the proof that somebody does
+ * not: it took an id from a form, cancelled it, and never asked whose it was.
+ *
+ * Scoping the QUERY makes the wrong answer unreachable rather than merely
+ * discouraged. A booking belonging to somebody else does not come back as a row
+ * this caller has to be trusted to reject; it does not come back at all, and
+ * every surface built on this inherits that for free.
+ *
+ * Status is deliberately not filtered. The detail screen has to be able to say
+ * "this was cancelled" — a cancelled booking that vanishes into a not-found
+ * page tells a member who just cancelled it that something went wrong.
+ */
+export async function memberBookingById(
+  db: ArmoryReader,
+  input: {
+    readonly bookingId: string;
+    readonly membershipId: string;
+    readonly personId: string;
+  },
+): Promise<(MemberBooking & { readonly status: BookingStatus }) | null> {
+  const [booking] = await db
+    .select({
+      id: schema.bookings.id,
+      slotStart: schema.bookings.slotStart,
+      slotEnd: schema.bookings.slotEnd,
+      discipline: schema.bookings.discipline,
+      bookingType: schema.bookings.bookingType,
+      status: schema.bookings.status,
+    })
+    .from(schema.bookings)
+    .where(
+      and(
+        eq(schema.bookings.id, input.bookingId),
+        /* The whole point. See the header. */
+        eq(schema.bookings.hostMembershipId, input.membershipId),
+      ),
+    )
+    .limit(1);
+
+  if (!booking) return null;
+
+  const rows = await db
+    .select({
+      personId: schema.bookingParticipants.personId,
+      role: schema.bookingParticipants.role,
+      firstName: schema.people.firstName,
+      lastName: schema.people.lastName,
+      invitationStatus: schema.guestInvitations.status,
+    })
+    .from(schema.bookingParticipants)
+    .innerJoin(schema.people, eq(schema.people.id, schema.bookingParticipants.personId))
+    .leftJoin(
+      schema.guestInvitations,
+      eq(schema.guestInvitations.id, schema.bookingParticipants.guestInvitationId),
+    )
+    .where(eq(schema.bookingParticipants.bookingId, booking.id));
+
+  return {
+    ...booking,
+    partySize: rows.length,
+    companions: rows
+      .filter((row) => row.personId !== input.personId)
+      .map((row) => ({
+        personId: row.personId,
+        name: `${row.firstName} ${row.lastName}`,
+        isGuest: row.role === "guest_shooter",
+        invitationStatus: row.invitationStatus ?? null,
+      })),
+  };
 }
 
 /** The one card §6.1 asks for. Null when the member has nothing booked. */

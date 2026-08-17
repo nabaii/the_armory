@@ -122,6 +122,17 @@ export const routes = {
    *  Components."
    */
   portalBookNew: "/portal/book/new",
+  /**
+   * One booking of the member's own — §6.1's "date, time, discipline, lane,
+   * companions. Inline: add a guest, change, cancel."
+   *
+   * A function rather than a constant because it is the first portal route
+   * that identifies a record. It sits under `/portal/book` so the Diary tab
+   * stays lit while a member is looking at a booking they made from it —
+   * `activePortalHref` resolves that by longest match, and BOOK owns
+   * `/portal/book/new` more specifically, so neither steals the other.
+   */
+  portalBooking: (id: string) => `/portal/book/${id}`,
   /** §6.2 "My shooting" — history, personal best, trend. Standings are Phase 2. */
   portalShooting: "/portal/shooting",
   /** §6.2 "My documents" — waiver, licence, owned firearm registrations. */
