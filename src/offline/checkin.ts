@@ -55,6 +55,16 @@ export type LocalParticipation = {
   /** §3.3. The tier as it stood at the visit. */
   tierSnapshot: unknown;
   checkedInAt: string;
+  /**
+   * When the officer opened the sheet on somebody already at the desk —
+   * Management §11.4, and the clock on the club's fifteen-second promise.
+   *
+   * Null where the caller did not measure. The check-in completes either way,
+   * because a measurement that can refuse a member at the counter would matter
+   * more than the thing it measures — which is how instrumentation gets
+   * switched off.
+   */
+  arrivalAt: string | null;
   checkedInByStaffId: string | null;
   checkedOutAt: string | null;
 };
@@ -87,6 +97,16 @@ export type CheckInContext = {
   override: { reason: string } | null;
   /** Assigned at check-in. §6.4: "checked in with a lane assigned." */
   laneId: string | null;
+  /**
+   * When this person presented at the desk — Management §11.4.
+   *
+   * The officer opening the sheet is the closest thing the console has to that
+   * moment, and it is close enough: the sheet opens because somebody is
+   * standing there. Optional so no existing caller is broken, and so a caller
+   * that genuinely cannot measure says so by omission rather than by passing a
+   * time it invented.
+   */
+  arrivalAt?: Date | null;
 };
 
 /**
@@ -151,6 +171,14 @@ export function buildCheckIn(
        record of somebody who was never subject to it. */
     tierSnapshot: tier ?? null,
     checkedInAt: context.now.toISOString(),
+    /* Never after the completion. A tablet woken from sleep can produce a
+       start later than its own finish, and a negative duration is clock skew
+       rather than a fast check-in — `checkInClock` discards those, but a value
+       that cannot be wrong is better than one that has to be filtered. */
+    arrivalAt:
+      context.arrivalAt && context.arrivalAt <= context.now
+        ? context.arrivalAt.toISOString()
+        : null,
     checkedInByStaffId: context.actorStaffId,
     checkedOutAt: null,
   };
@@ -174,6 +202,7 @@ export function buildCheckIn(
             laneId: participation.laneId,
             tierSnapshot: participation.tierSnapshot,
             checkedInAt: participation.checkedInAt,
+            arrivalAt: participation.arrivalAt,
           },
         },
         {

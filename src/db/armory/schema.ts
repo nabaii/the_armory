@@ -345,6 +345,75 @@ export const openingHours = armory.table(
 );
 
 /* ============================================================================
+   SERVICE HOURS — Management System Design Specification §7.1, finding F3
+
+   "Service hours are separate from range hours and this is the point. A club
+    that can only express when the range is open cannot express a Thursday
+    evening where the kitchen serves and nobody shoots — which is the exact
+    behaviour the business depends on."
+
+   ===========================================================================
+   THE CLUB COULD SAY THIS AND COULD NOT MODEL IT
+
+   `opening_hours.label` above holds "Deck and kitchen only" and its own comment
+   says it is never parsed. Table availability ran the entire opening day
+   against one global cover count. So the schema permitted a member to book a
+   table at 09:15 on a day the kitchen opens at noon — the same failure
+   `club_settings.table_capacity` exists to prevent, arriving through the time
+   dimension rather than the capacity one.
+
+   ===========================================================================
+   ITS OWN TABLE, NOT A COLUMN ON opening_hours
+
+   A `serving` boolean on an opening period was the cheaper shape and was
+   rejected on a mechanism the slot grid makes plain. A kitchen serving
+   12:00–15:00 inside a 09:00–18:00 range day would have to be expressed by
+   splitting that day into three opening periods — and the grid restarts at
+   every period boundary, so splitting for the kitchen's sake would silently
+   forbid any shooting session spanning noon. Service hours have to cut across
+   the range's day without perturbing it.
+
+   ===========================================================================
+   AN EMPTY TABLE IS AN HONEST TABLE, AGAIN
+
+   No seed and no default. Zero rows means the club has not said when it serves,
+   which `availableTables` reads as "no covers bookable" and `emptyTableReason`
+   renders as a sentence naming the missing decision. The founder has not
+   settled kitchen hours; that is registered in src/lib/content-gate.ts as
+   `kitchen-hours` rather than guessed here.
+   ========================================================================= */
+
+export const serviceHours = armory.table(
+  "service_hours",
+  {
+    id: id(),
+
+    /** 0 = Sunday, matching `opening_hours` and `Date#getDay`. */
+    weekday: smallint("weekday").notNull(),
+
+    /** Minutes since Lagos midnight. 12:00 is 720. */
+    opensMinute: integer("opens_minute").notNull(),
+    closesMinute: integer("closes_minute").notNull(),
+
+    /**
+     * What is being served — "Lunch", "Kitchen and bar", "Bar only".
+     *
+     * Rendered in the Diary beside the operating rhythm; never parsed. The
+     * same rule as `opening_hours.label`, and for the same reason: the moment a
+     * label carries meaning the club has a second, undocumented vocabulary.
+     */
+    label: text("label"),
+
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("service_hours_weekday_idx").on(t.weekday),
+    uniqueIndex("service_hours_period_key").on(t.weekday, t.opensMinute),
+  ],
+);
+
+/* ============================================================================
    THE PROGRAMME — Members Portal §7.3 feed three, §12 item 5
 
    "There is no events entity anywhere in the eleven milestones. A club whose
@@ -1370,6 +1439,44 @@ export const participations = armory.table(
     tierSnapshot: jsonb("tier_snapshot"),
 
     checkedInAt: timestamp("checked_in_at", { withTimezone: true }).notNull(),
+
+    /**
+     * WHEN THE OFFICER STARTED — Management §11.4, and the fifteen seconds.
+     *
+     * =======================================================================
+     * THE CLUB'S CENTRAL OPERATING PROMISE WAS UNMEASURED
+     *
+     * The fifteen-second check-in appears in four documents as a design
+     * constraint. The whole members portal is arranged to protect it, the
+     * management specification judges every feature against it, and nothing
+     * anywhere measured it — so every claim that this software reduces desk
+     * work was an assertion rather than a number.
+     *
+     * The specification budgeted two fields for this. It needed one:
+     * `checked_in_at` above has always recorded the COMPLETION. What was
+     * missing is the start — the moment the officer opened the sheet on a
+     * person already standing at the desk.
+     *
+     * =======================================================================
+     * NULLABLE, AND FAILING TO MEASURE MUST NEVER FAIL A CHECK-IN
+     *
+     * Null means unmeasured, not zero. Two reasons, and the second is the
+     * important one:
+     *
+     *   Every participation written before this column existed has no start,
+     *   and back-filling one would invent a duration.
+     *
+     *   A check-in must complete whether or not the clock started. If a
+     *   measurement bug could refuse a member at the counter, the measurement
+     *   would be more important than the thing it measures — which is exactly
+     *   backwards, and is how instrumentation ends up switched off.
+     *
+     * `checkInClock` in src/domain/intelligence.ts discards negative durations
+     * as clock skew rather than as fast check-ins, because this is written by
+     * a tablet whose clock §8 already declines to trust.
+     */
+    arrivalAt: timestamp("arrival_at", { withTimezone: true }),
+
     checkedInByStaffId: uuid("checked_in_by_staff_id").references(
       () => staffUsers.id,
       { onDelete: "set null" },

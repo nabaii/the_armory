@@ -112,6 +112,58 @@ const context = {
   laneId: LANE,
 };
 
+/* ============================================================================
+   THE CHECK-IN CLOCK — Management System Design Specification §11.4
+
+   "The club's central operating promise is currently unmeasured… Once the
+    console timestamps it, every claim made about the portal reducing desk work
+    becomes testable rather than asserted."
+   ========================================================================= */
+
+describe("the fifteen seconds are measured, and never enforced — §11.4", () => {
+  it("records when the officer opened the sheet", () => {
+    const arrivedAt = new Date(NOW.getTime() - 12_000);
+
+    const result = buildCheckIn(hydrate(pack()), memberArrival, {
+      ...context,
+      arrivalAt: arrivedAt,
+    });
+
+    assert.ok(result.ok);
+    assert.equal(result.writes.participation.arrivalAt, arrivedAt.toISOString());
+    /* And it reaches the server, or the column is decoration. */
+    const [checkin] = result.writes.queue;
+    assert.equal(
+      (checkin.payload as { arrivalAt: string | null }).arrivalAt,
+      arrivedAt.toISOString(),
+    );
+  });
+
+  it("checks the member in anyway when nothing was measured", () => {
+    /* The rule that keeps instrumentation switched on: a measurement may never
+       refuse the operation it measures. A member at the counter must not be
+       turned away for a figure on a dashboard. */
+    const result = buildCheckIn(hydrate(pack()), memberArrival, context);
+
+    assert.ok(result.ok);
+    assert.equal(result.writes.participation.arrivalAt, null);
+    assert.equal(result.writes.queue.length, 2, "both rows still queued");
+  });
+
+  it("drops a start that follows its own finish, as clock skew", () => {
+    /* A tablet woken from sleep can produce this. §8 already declines to trust
+       the device clock, and a stored negative duration is a WRONG measurement
+       rather than a missing one — which is worse, because it looks like data. */
+    const result = buildCheckIn(hydrate(pack()), memberArrival, {
+      ...context,
+      arrivalAt: new Date(NOW.getTime() + 30_000),
+    });
+
+    assert.ok(result.ok);
+    assert.equal(result.writes.participation.arrivalAt, null);
+  });
+});
+
 describe("checking somebody in offline", () => {
   it("writes a participation and an audit entry, in that order", () => {
     const result = buildCheckIn(hydrate(pack()), memberArrival, context);
@@ -271,6 +323,7 @@ describe("who is on the premises", () => {
     laneId: null,
     tierSnapshot: null,
     checkedInAt: NOW.toISOString(),
+    arrivalAt: null,
     checkedInByStaffId: STAFF,
     checkedOutAt,
   });

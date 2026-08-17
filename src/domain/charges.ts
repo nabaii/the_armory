@@ -66,6 +66,29 @@ export const CHARGE_REFERENCE_TYPES = [
   "membership",
   "guest_visit",
   "booking",
+  /**
+   * FOOD AND DRINK — Management finding F1.
+   *
+   * =========================================================================
+   * THE CLUB COULD NOT CHARGE FOR HALF OF WHAT IT SAYS IT IS
+   *
+   * The governing frame is "a hospitality operation with a shooting range
+   * attached", and Management §11.2 makes the revenue mix — membership, range,
+   * F&B, guest fees — one of the two numbers that can falsify that. Three of
+   * those four had a line here. This one did not, so anything sold on the deck
+   * had to be rung up as `adjustment`, the catch-all, which does not merely
+   * lose the figure: it moves it into a bucket that is not revenue at all.
+   *
+   * The specification says the category split "cannot be reconstructed later".
+   * It understated the case — until this row existed the split could not be
+   * CONSTRUCTED, because the vocabulary had no word for the thing being sold.
+   *
+   * `payments.purpose` has carried "bar" and "retail" since M8, which is what
+   * made this easy to miss: the money coming IN could be labelled, while the
+   * club EARNING it could not. src/domain/revenue.ts is where those two lists
+   * are reconciled, and why only this one may be read for revenue.
+   */
+  "fnb",
   "storage",
   "adjustment",
 ] as const;
@@ -179,11 +202,74 @@ export function guestOverageCharge(input: {
 }
 
 /**
+ * Food and drink, put on a member's account at the deck — Management F1, F4.
+ *
+ * ===========================================================================
+ * THIS CONSTRUCTOR CARRIES BOTH FALSIFYING NUMBERS
+ *
+ * Management §11.2 names two figures that can falsify the club's whole
+ * strategy, and this one row feeds both:
+ *
+ *   revenue mix               the F&B line, which had no vocabulary until now
+ *   non-shooting visit share  a member who bought lunch and fired nothing
+ *
+ * The second is the part that is easy to miss. The desk console is a range gate
+ * — a member who comes in to eat is not checked in, fires no round, and under
+ * every earlier version of this schema left no trace at all. So the club's
+ * first falsifying number would have read zero, honestly, from a record that
+ * never had a chance to say otherwise. `nonShootingVisits` in
+ * src/domain/intelligence.ts reads these charges as the evidence of a visit,
+ * which is why the date on this charge matters as much as the amount.
+ *
+ * ===========================================================================
+ * WHY IT TAKES LINES RATHER THAN A TOTAL
+ *
+ * A bar tab is genuinely several things, and a member checking a statement
+ * three weeks later needs to recognise the evening — the same argument
+ * `guestOverageCharge` makes about naming the guest. A single "Deck — ₦12,400"
+ * is a figure they cannot check, and an unrecognised figure becomes a WhatsApp
+ * message to a person, which is the phone call this system exists to prevent.
+ */
+export function serviceCharge(input: {
+  readonly personId: string;
+  readonly items: readonly {
+    readonly description: string;
+    readonly quantity: number;
+    readonly unitKobo: Kobo;
+  }[];
+  /** The session it was served during, where there is one. Often there is not. */
+  readonly sessionId: string | null;
+}): Charge {
+  const lines = input.items.map((item) =>
+    line(item.description, item.quantity, item.unitKobo),
+  );
+
+  return {
+    payerPersonId: input.personId,
+    referenceType: "fnb",
+    referenceId: input.sessionId,
+    lines,
+    totalKobo: total(lines),
+  };
+}
+
+/**
  * Anything an officer or the founder puts on an account by hand.
  *
  * Deliberately last, and deliberately requires a description. §6.6 reports
  * revenue by source, and an adjustment with no account of itself is the line
  * that makes the report unreadable a year later.
+ *
+ * ===========================================================================
+ * IT IS NOT A REVENUE LINE, AND MUST NOT BECOME THE DRAIN
+ *
+ * Management §15 lists "`adjustment` used for anything sold" as a failure mode
+ * with a specific consequence: the F&B line stays empty while F&B revenue
+ * exists, and the falsifying number silently reports that the hospitality
+ * thesis failed. `revenueMix` therefore reports adjustments as their own
+ * visible line rather than folding them into a category — a growing adjustment
+ * share is a miscategorisation the founder can see, instead of a wrong answer
+ * they cannot.
  */
 export function adjustmentCharge(input: {
   readonly personId: string;

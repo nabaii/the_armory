@@ -276,6 +276,28 @@ export const contentGate: GateItem[] = [
       "most.",
   },
   {
+    id: "kitchen-hours",
+    label: "When does the kitchen and bar actually serve?",
+    owner: "Founder",
+    resolved: false,
+    severity: "degraded",
+    note:
+      "Management System §7.1, and finding F3 of the product panel of 17 " +
+      "August 2026. Until 0010 the club could WRITE 'Deck and kitchen only' — " +
+      "opening_hours.label, which the schema documents as never parsed — and " +
+      "could not MODEL it: table slots ran the whole opening day against one " +
+      "global cover count, so a member could book a table at 09:15 on a day " +
+      "the kitchen opens at noon. armory.service_hours now holds the club's " +
+      "service windows and availableTables requires a sitting to fall wholly " +
+      "inside one. THE TABLE IS EMPTY, which yields no table slots and the " +
+      "sentence 'The club has not published its kitchen and bar hours yet.' " +
+      "Told to the panel as unsettled on 17 August; registered rather than " +
+      "guessed, because the permissive reading — serve whenever the doors are " +
+      "open — is the one that sells a lunch nobody is cooking. Paired with " +
+      "`table-capacity`: BOTH must be answered before a cover can be sold, and " +
+      "answering only one leaves the surface saying so.",
+  },
+  {
     id: "spectator-capacity",
     label: "Does a spectator occupy one of the club's covers?",
     owner: "Operations",

@@ -346,6 +346,15 @@ export function ConsoleApp() {
       personId: string,
       laneId: string,
       override: { reason: string } | null,
+      /**
+       * When the sheet opened on somebody at the desk — Management §11.4.
+       *
+       * Passed in rather than read here, because "now" at this point is the
+       * moment the officer pressed Check in, which is the END of the fifteen
+       * seconds. The start belongs to CheckInSheet, which is the component that
+       * knows when a person turned up.
+       */
+      arrivalAt: Date | null,
     ) => {
       setRefusal(null);
 
@@ -376,6 +385,7 @@ export function ConsoleApp() {
         /* §6.4: "checked in WITH A LANE ASSIGNED." Chosen by the officer in
            CheckInSheet, defaulted to the lowest free bay. */
         laneId,
+        arrivalAt,
       });
 
       if (!result.ok) {
@@ -1208,8 +1218,8 @@ export function ConsoleApp() {
           }
           overridable={checkingIn.overridable}
           blockedLine={checkingIn.line || null}
-          onConfirm={({ laneId, override }) =>
-            void checkIn(checkingIn.personId, laneId, override)
+          onConfirm={({ laneId, override, arrivalAt }) =>
+            void checkIn(checkingIn.personId, laneId, override, arrivalAt)
           }
           onCancel={() => setCheckingIn(null)}
         />

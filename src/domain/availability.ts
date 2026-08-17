@@ -124,6 +124,56 @@ export type AvailabilityPolicy = {
    * and exactly as embarrassing in front of a guest (P5).
    */
   readonly tableCapacity: number | null;
+  /**
+   * WHEN THE KITCHEN AND BAR ACTUALLY SERVE — Management §7.1, finding F3.
+   *
+   * =========================================================================
+   * THE CLUB COULD SAY THIS AND COULD NOT MODEL IT
+   *
+   * `OpeningPeriod.label` above carries "Deck and kitchen only" and is
+   * documented as never parsed, and `availableTables` ran the whole opening day
+   * against one global cover count. So a member could book a table at 09:15 on
+   * a day the kitchen opens at noon — which is the same failure `tableCapacity`
+   * exists to prevent ("selling a Friday evening the kitchen cannot serve"),
+   * arriving through the time dimension instead of the capacity one. The build
+   * caught one half; this is the other.
+   *
+   * =========================================================================
+   * A SEPARATE LIST, NOT A FLAG ON AN OPENING PERIOD
+   *
+   * The obvious cheaper shape was a `serving` boolean on `OpeningPeriod`, and it
+   * was rejected on a mechanism the grid makes plain. A kitchen serving
+   * 12:00–15:00 inside a 09:00–18:00 opening day would have to be expressed by
+   * splitting that day into three periods — and the slot grid restarts at every
+   * period boundary, so splitting for the kitchen's sake would silently forbid
+   * any shooting session spanning noon. Service hours must be able to cut across
+   * the range's day without perturbing it, which means their own periods.
+   *
+   * =========================================================================
+   * EMPTY MEANS THE CLUB HAS NOT SAID, AND THAT YIELDS NO TABLES
+   *
+   * The same direction as `tableCapacity`, for the same reason and with the same
+   * argument against the permissive default. A club that has not declared when
+   * it serves has not declared that it serves at all hours; it has declared
+   * nothing, and `emptyTableReason` says so in words.
+   */
+  readonly servicePeriods: readonly ServicePeriod[];
+};
+
+/**
+ * A window in which the club serves food or drink.
+ *
+ * Deliberately smaller than `OpeningPeriod`: no `staffed`, because an officer on
+ * the firing line has nothing to do with the kitchen, and that is the whole
+ * distinction this type exists to hold.
+ */
+export type ServicePeriod = {
+  /** 0 = Sunday, matching `OpeningPeriod`. */
+  readonly weekday: number;
+  readonly opens: MinuteOfDay;
+  readonly closes: MinuteOfDay;
+  /** "Lunch", "Kitchen and bar". Rendered in the Diary; never parsed. */
+  readonly label?: string | null;
 };
 
 /**
@@ -141,6 +191,7 @@ export const UNCONFIGURED_AVAILABILITY: AvailabilityPolicy = {
   openingHours: [],
   leadTimeMinutes: 60,
   tableCapacity: null,
+  servicePeriods: [],
 };
 
 /* ============================================================================
@@ -338,6 +389,12 @@ export function availableSlots(input: {
  * 2. A NULL CAPACITY YIELDS NOTHING, and says so through `emptyTableReason`
  *    rather than by rendering an empty grid. The club has not counted its
  *    covers; that is a fact about the club, not an absence of tables.
+ *
+ * 3. IT REQUIRES A SERVICE PERIOD — Management finding F3. The deck being open
+ *    is not the kitchen serving, and a cover sold for an hour nobody is cooking
+ *    is worse than a closed range: the member arrives, and the club watches it
+ *    happen. See `servicePeriods` on the policy for why these are their own
+ *    windows rather than a flag on an opening period.
  */
 export function availableTables(input: {
   readonly policy: AvailabilityPolicy;
@@ -349,12 +406,14 @@ export function availableTables(input: {
 
   const capacity = policy.tableCapacity;
   if (capacity === null || capacity <= 0) return [];
+  if (policy.servicePeriods.length === 0) return [];
 
   return grid({
     policy,
     now,
     days,
     staffedOnly: false,
+    servedOnly: true,
     measure: (start, end) => {
       const taken = booked
         .filter((existing) =>
@@ -400,9 +459,19 @@ function grid(input: {
   readonly now: Date;
   readonly days: number;
   readonly staffedOnly: boolean;
+  /**
+   * Whether a slot must fall wholly inside one of the club's service periods.
+   *
+   * Set only by the table grid. A shooting slot has nothing to do with whether
+   * the kitchen is open, and a lane grid that consulted service hours would
+   * close the range because the chef went home — the priority inversion P4 names
+   * as a structural risk, arriving from the hospitality side for once.
+   */
+  readonly servedOnly?: boolean;
   readonly measure: (start: Date, end: Date) => Slot;
 }): Slot[] {
   const { policy, now, days, staffedOnly, measure } = input;
+  const servedOnly = input.servedOnly ?? false;
 
   if (policy.sessionMinutes <= 0) return [];
 
@@ -441,6 +510,21 @@ function grid(input: {
         minute + policy.sessionMinutes <= period.closes;
         minute += step
       ) {
+        /* The WHOLE sitting has to be inside a service window, not merely its
+           first minute. A member seated at 14:30 for an hour, where service ends
+           at 15:00, has been sold half a lunch. */
+        if (
+          servedOnly &&
+          !served(
+            policy.servicePeriods,
+            parts.weekday,
+            minute,
+            minute + policy.sessionMinutes,
+          )
+        ) {
+          continue;
+        }
+
         const start = lagosInstant(
           parts.year,
           parts.month,
@@ -458,6 +542,28 @@ function grid(input: {
   }
 
   return slots.sort((a, b) => a.start.getTime() - b.start.getTime());
+}
+
+/**
+ * Whether a sitting falls wholly inside one of the club's service windows.
+ *
+ * Contained rather than overlapping, and one period rather than several. Two
+ * adjacent windows — 12:00–15:00 and 18:00–21:00 — do not combine into an
+ * afternoon: the gap between them is the gap, and a sitting that spans it is a
+ * sitting the kitchen closes in the middle of.
+ */
+function served(
+  periods: readonly ServicePeriod[],
+  weekday: number,
+  opensMinute: number,
+  closesMinute: number,
+): boolean {
+  return periods.some(
+    (period) =>
+      period.weekday === weekday &&
+      opensMinute >= period.opens &&
+      closesMinute <= period.closes,
+  );
 }
 
 /**
@@ -611,6 +717,19 @@ export function emptyTableReason(policy: AvailabilityPolicy): string | null {
      up" are different problems. */
   if (policy.sessionMinutes <= 0) {
     return "The club has not set how long a session runs, so nothing can be booked yet.";
+  }
+  /**
+   * Covers counted, hours published, and nobody has said when the kitchen
+   * serves — Management finding F3.
+   *
+   * Last, because it is the narrowest of the five and only reachable once the
+   * other four are configured. It is also the branch most likely to render on
+   * the day the founder finally sets `table_capacity`, which is exactly when
+   * somebody needs to be told that a second decision is outstanding rather than
+   * left looking at an empty grid wondering whether the feature works.
+   */
+  if (policy.servicePeriods.length === 0) {
+    return "The club has not published its kitchen and bar hours yet.";
   }
   return null;
 }

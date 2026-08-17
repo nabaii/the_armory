@@ -83,6 +83,25 @@ export async function clubAvailabilityPolicy(
     .from(schema.openingHours)
     .orderBy(asc(schema.openingHours.weekday), asc(schema.openingHours.opensMinute));
 
+  /**
+   * When the kitchen and bar serve — Management §7.1, finding F3.
+   *
+   * A second read rather than a join, because the two lists answer different
+   * questions and neither constrains the other: the range's day and the
+   * kitchen's day overlap without either owning the other. An empty result is
+   * the club's current state and means no table slots, which `availableTables`
+   * enforces and `emptyTableReason` explains.
+   */
+  const service = await db
+    .select({
+      weekday: schema.serviceHours.weekday,
+      opens: schema.serviceHours.opensMinute,
+      closes: schema.serviceHours.closesMinute,
+      label: schema.serviceHours.label,
+    })
+    .from(schema.serviceHours)
+    .orderBy(asc(schema.serviceHours.weekday), asc(schema.serviceHours.opensMinute));
+
   /* No settings row at all is the same state as a settings row with nothing in
      it. Both mean the club has not decided, and neither is an error. */
   if (!settings) return UNCONFIGURED_AVAILABILITY;
@@ -105,6 +124,10 @@ export async function clubAvailabilityPolicy(
     leadTimeMinutes: settings.bookingLeadTimeMinutes ?? 0,
     tableCapacity: settings.tableCapacity,
     openingHours,
+    /* Never falls back. An empty list means the club has not published kitchen
+       hours, and the permissive reading of that — serve whenever the doors are
+       open — is the one that sells a lunch nobody is cooking. */
+    servicePeriods: service,
   };
 }
 

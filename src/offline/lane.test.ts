@@ -94,6 +94,7 @@ const participation = (
   laneId: LANE_RIFLE_1,
   tierSnapshot: null,
   checkedInAt: "2026-08-14T14:00:00.000Z",
+  arrivalAt: null,
   checkedInByStaffId: STAFF,
   checkedOutAt: null,
   ...overrides,

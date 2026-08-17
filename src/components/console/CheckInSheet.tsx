@@ -56,11 +56,33 @@ export function CheckInSheet({
   onConfirm: (input: {
     laneId: string;
     override: { reason: string } | null;
+    /**
+     * When this sheet opened — Management §11.4, the club's fifteen seconds.
+     *
+     * The officer opening the sheet is the closest thing the console has to
+     * the moment somebody presented at the desk, and it is close enough: the
+     * sheet opens because a person is standing there.
+     */
+    arrivalAt: Date;
   }) => void;
   onCancel: () => void;
 }) {
   const [laneId, setLaneId] = useState(suggested?.id ?? "");
   const [reason, setReason] = useState("");
+
+  /**
+   * THE CLOCK STARTS HERE, AND IT IS ONE `useState` INITIALISER.
+   *
+   *   §11.4: "The club's central operating promise is currently unmeasured…
+   *    Nothing measures it. The console can timestamp arrival and completion at
+   *    almost no cost."
+   *
+   * A lazy initialiser rather than a `useEffect`, so it is the first render of
+   * this sheet that is timed rather than the commit after it — and so React's
+   * development double-invocation cannot move it. Nothing downstream may fail
+   * because of it: a check-in completes whether or not this number survives.
+   */
+  const [openedAt] = useState(() => new Date());
 
   const chosen = lanes.find((lane) => lane.id === laneId) ?? null;
   const needsReason = overridable && blockedLine !== null;
@@ -159,6 +181,7 @@ export function CheckInSheet({
           onConfirm({
             laneId: chosen.id,
             override: needsReason ? { reason: reason.trim() } : null,
+            arrivalAt: openedAt,
           })
         }
         className="mt-6 w-full border border-[--color-reticle-black] px-4 py-3 font-medium disabled:border-[--color-sight-grey] disabled:text-[--color-sight-grey]"

@@ -100,6 +100,11 @@ export function mergedParticipations(
          that reads one — see the projection. Null rather than a guess. */
       tierSnapshot: null,
       checkedInAt: row.checkedInAt,
+      /* The day pack does not carry the check-in clock and this device has no
+         decision that reads one. Null rather than a guess — the measurement
+         belongs to the desk that took it, and inventing a start here would put
+         a duration into §11.4's figures that nobody timed. */
+      arrivalAt: null,
       checkedInByStaffId: null,
       checkedOutAt: row.checkedOutAt,
     });

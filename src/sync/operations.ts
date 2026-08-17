@@ -317,6 +317,24 @@ const parsers: Record<PushOperation, Parser> = {
     const laneId = optionalUuid(payload, "laneId");
     if (laneId === undefined) return missing("laneId", "a valid lane");
 
+    /**
+     * The start of the check-in — Management §11.4.
+     *
+     * OPTIONAL, and unparseable is treated as absent rather than rejected. The
+     * one rule this codebase applies to instrumentation is that it may never
+     * refuse the operation it measures: a member standing at the desk must not
+     * be turned away because a tablet sent a malformed timestamp for a figure
+     * on a dashboard nobody is looking at yet.
+     *
+     * A start after the finish is dropped for the same reason `buildCheckIn`
+     * drops it — that is clock skew on a device §8 already declines to trust,
+     * and a stored negative duration is a wrong measurement rather than a
+     * missing one.
+     */
+    const arrivalAtRaw = instant(payload, "arrivalAt");
+    const arrivalAt =
+      arrivalAtRaw && arrivalAtRaw <= checkedInAt ? arrivalAtRaw : null;
+
     return {
       ok: true,
       write: { kind: "insert", row: {
@@ -331,6 +349,7 @@ const parsers: Record<PushOperation, Parser> = {
           /* jsonb. Drizzle binds the object; no manual serialisation. */
           tierSnapshot: payload.tierSnapshot ?? null,
           checkedInAt,
+          arrivalAt,
           checkedInByStaffId: request.actorStaffId,
           deviceId: request.deviceId,
           /* `recordedAt` is deliberately absent: it is the server's clock and is

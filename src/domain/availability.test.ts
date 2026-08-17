@@ -65,16 +65,30 @@ const policy = (overrides: Partial<AvailabilityPolicy> = {}): AvailabilityPolicy
      table test opts in explicitly, so no lane test can pass by accident on a
      capacity it never asked for. */
   tableCapacity: null,
+  /* Service across the whole default opening period, so the cases below that
+     exist to test COVER ARITHMETIC keep testing cover arithmetic. The gate
+     itself — a kitchen that serves for part of the day, or not at all — is
+     tested explicitly in "the kitchen keeps its own hours". */
+  servicePeriods: [
+    { weekday: THURSDAY, opens: minuteOfDay(9), closes: minuteOfDay(12) },
+  ],
   ...overrides,
 });
 
-/** The club's real configuration: its declared week, session and buffer. */
+/**
+ * The club's real configuration: its declared week, session and buffer.
+ *
+ * `servicePeriods` is empty because that is the true state — the club has not
+ * published kitchen and bar hours, and the founder has not settled them. It is
+ * used only by lane cases, which service hours must never reach.
+ */
 const declaredPolicy = (): AvailabilityPolicy => ({
   sessionMinutes: SESSION_MINUTES,
   turnaroundMinutes: TURNAROUND_MINUTES,
   openingHours: CLUB_WEEK,
   leadTimeMinutes: 0,
   tableCapacity: null,
+  servicePeriods: [],
 });
 
 /** Minutes since Lagos midnight for an instant, for comparing against a grid. */
@@ -651,6 +665,118 @@ describe("the tables keep their own hours", () => {
       /opening hours/,
     );
     assert.equal(emptyTableReason(policy({ tableCapacity: 6 })), null);
+  });
+});
+
+/* ============================================================================
+   THE KITCHEN KEEPS ITS OWN HOURS — Management §7.1, finding F3
+
+   "A member can book a table at 09:15 on a day the kitchen opens at noon."
+
+   The club could WRITE "Deck and kitchen only" — `OpeningPeriod.label`, which
+   the schema documents as never parsed — and could not MODEL it. Table slots
+   ran the whole opening day against one global cover count.
+   ========================================================================= */
+
+describe("the kitchen keeps its own hours — F3", () => {
+  const lunchOnly = (overrides: Partial<AvailabilityPolicy> = {}) =>
+    policy({
+      tableCapacity: 10,
+      openingHours: [
+        {
+          weekday: THURSDAY,
+          opens: minuteOfDay(9),
+          closes: minuteOfDay(18),
+          staffed: true,
+        },
+      ],
+      servicePeriods: [
+        { weekday: THURSDAY, opens: minuteOfDay(12), closes: minuteOfDay(15) },
+      ],
+      ...overrides,
+    });
+
+  it("refuses the 09:00 table on a day the kitchen opens at noon", () => {
+    const tables = availableTables({
+      policy: lunchOnly(),
+      booked: [],
+      now: NOW,
+      days: 1,
+    });
+
+    const starts = tables.map((slot) => lagosMinuteOf(slot.start));
+
+    assert.ok(
+      !starts.includes(minuteOfDay(9)),
+      "a cover sold for an hour nobody is cooking is worse than a closed range",
+    );
+    assert.deepEqual(starts, [minuteOfDay(12), minuteOfDay(13), minuteOfDay(14)]);
+  });
+
+  it("requires the whole sitting to be inside service, not just its first minute", () => {
+    /* A member seated at 14:30 for an hour, where service ends at 15:00, has
+       been sold half a lunch. */
+    const tables = availableTables({
+      policy: lunchOnly({
+        servicePeriods: [
+          { weekday: THURSDAY, opens: minuteOfDay(12), closes: minuteOfDay(14) + 30 },
+        ],
+      }),
+      booked: [],
+      now: NOW,
+      days: 1,
+    });
+
+    assert.deepEqual(
+      tables.map((slot) => lagosMinuteOf(slot.start)),
+      [minuteOfDay(12), minuteOfDay(13)],
+    );
+  });
+
+  it("does not join two service windows across the gap between them", () => {
+    /* Lunch and dinner do not combine into an afternoon. A sitting spanning the
+       gap is a sitting the kitchen closes in the middle of. */
+    const tables = availableTables({
+      policy: lunchOnly({
+        servicePeriods: [
+          { weekday: THURSDAY, opens: minuteOfDay(12), closes: minuteOfDay(13) },
+          { weekday: THURSDAY, opens: minuteOfDay(14), closes: minuteOfDay(15) },
+        ],
+      }),
+      booked: [],
+      now: NOW,
+      days: 1,
+    });
+
+    assert.deepEqual(
+      tables.map((slot) => lagosMinuteOf(slot.start)),
+      [minuteOfDay(12), minuteOfDay(14)],
+    );
+  });
+
+  it("offers nothing, and says why, when the club has not published kitchen hours", () => {
+    /* The state the club is in today. Covers counted, hours published, and
+       nobody has said when the kitchen serves — so the honest answer names the
+       decision that is outstanding rather than rendering an empty grid. */
+    const undeclared = lunchOnly({ servicePeriods: [] });
+
+    assert.deepEqual(
+      availableTables({ policy: undeclared, booked: [], now: NOW, days: 1 }),
+      [],
+    );
+    assert.match(emptyTableReason(undeclared) ?? "", /kitchen and bar hours/);
+  });
+
+  it("never lets service hours reach the firing line", () => {
+    /* P4 from the other direction. A lane grid that consulted the kitchen would
+       close the range because the chef went home. */
+    const noService = policy({ servicePeriods: [] });
+
+    assert.equal(
+      slots({ policy: noService }).length,
+      3,
+      "shooting is unaffected by whether the club is serving",
+    );
   });
 });
 

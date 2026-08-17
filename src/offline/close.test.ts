@@ -67,6 +67,7 @@ const participation = (
   laneId: "lane-1",
   tierSnapshot: null,
   checkedInAt: "2026-08-13T17:00:00.000Z",
+    arrivalAt: null,
   checkedInByStaffId: "staff-1",
   checkedOutAt,
 });
