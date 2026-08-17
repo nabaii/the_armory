@@ -1,8 +1,22 @@
 import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import type { ArmoryReader } from "@/db/armory/client";
 import { schema } from "@/db/armory/client";
-import type { ApplicationStatus } from "@/domain/enums";
+import type {
+  ApplicationStatus,
+  DegradationCause,
+  OperatingLevel,
+} from "@/domain/enums";
+import type { NearMissRecord } from "@/domain/near-miss";
+import type { RevenueCharge } from "@/domain/revenue";
+import type { ServiceRecord, VisitRecord } from "@/domain/intelligence";
+import { fromStorage, type Kobo } from "@/lib/money";
+import { alias } from "drizzle-orm/pg-core";
 import { addDays, lagosDateKey, lagosDaysBetween, parseDateColumn } from "@/lib/time";
+
+/* The owner of an application is a second person on `people`, joined through a
+   second `staff_users`. Aliased so neither collides with the applicant. */
+const ownerStaff = alias(schema.staffUsers, "owner_staff");
+const owner = alias(schema.people, "owner_person");
 
 /**
  * THE READS BEHIND THE MANAGEMENT SURFACES.
@@ -215,19 +229,18 @@ export type ApplicationRow = {
   /** Whole Lagos days since it arrived. The number that shames the queue. */
   readonly ageDays: number;
   /**
-   * The staff member who owns moving this forward.
+   * The staff member carrying this application — §8.2.
    *
-   * ALWAYS NULL TODAY, and deliberately not faked. `applications` has
-   * `decided_by_staff_id`, which records who CLOSED an application and says
-   * nothing about who is carrying it — and quietly reading that column as
-   * ownership would report a healthy queue in which every open application is
-   * unowned, which is the exact failure the blocker register names.
+   * Landed in 0012. NOT `decided_by_staff_id`, which records who CLOSED an
+   * application and is therefore null for every open one by definition: reading
+   * that as ownership would report a queue in which every live application is
+   * unowned and every dead one is owned.
    *
-   * The column this wants does not exist. It is registered as
-   * `application-owner` rather than invented, and until it lands every open
-   * application renders as unowned, which is true.
+   * Null is the honest state and stays visible. §8.2: "an application with no
+   * owner appears on the founder's DAY until it has one."
    */
   readonly ownerStaffId: string | null;
+  readonly ownerName: string | null;
 };
 
 /** Applications still needing somebody, oldest first. */
@@ -244,9 +257,18 @@ export async function applicationsQueue(
       status: schema.applications.status,
       sponsorType: schema.applications.sponsorType,
       submittedAt: schema.applications.submittedAt,
+      ownerStaffId: schema.applications.ownerStaffId,
+      ownerFirstName: owner.firstName,
+      ownerLastName: owner.lastName,
     })
     .from(schema.applications)
     .innerJoin(schema.people, eq(schema.people.id, schema.applications.personId))
+    /* Aliased, because `people` is already joined once for the APPLICANT. The
+       owner is a second person on the same table and an unaliased join would
+       silently resolve to the applicant's name — an application that appears to
+       own itself. */
+    .leftJoin(ownerStaff, eq(ownerStaff.id, schema.applications.ownerStaffId))
+    .leftJoin(owner, eq(owner.id, ownerStaff.personId))
     /* Open only. A decided application is a record, not a queue item — and a
        queue that keeps its history in it is a queue nobody reads. */
     .where(inArray(schema.applications.status, ["submitted", "under_review"]))
@@ -260,7 +282,11 @@ export async function applicationsQueue(
     sponsorType: row.sponsorType,
     submittedAt: row.submittedAt,
     ageDays: Math.max(0, -lagosDaysBetween(input.now, row.submittedAt)),
-    ownerStaffId: null,
+    ownerStaffId: row.ownerStaffId,
+    ownerName:
+      row.ownerFirstName && row.ownerLastName
+        ? `${row.ownerFirstName} ${row.ownerLastName}`
+        : null,
   }));
 }
 
@@ -498,4 +524,382 @@ export async function personRecord(
     qualifications,
     waiverSignedAt: waiver?.signedAt ?? null,
   };
+}
+
+/* ============================================================================
+   RE-EXPORTS, so `manage-source.ts` names one module
+
+   The source resolver is the only thing a screen holds, and a resolver whose
+   type referred to three modules would invite a page to import them directly —
+   which is how a screen ends up with its own reader and bypasses the
+   demonstration switch entirely. One name, one import.
+   ========================================================================= */
+
+export type RevenueChargeRow = RevenueCharge;
+export type NearMissRow = NearMissRecord;
+export type VisitEvidenceRow = VisitRecord;
+export type ServiceEvidenceRow = ServiceRecord;
+export type OperatingLevelValue = OperatingLevel;
+
+/* ============================================================================
+   THE OPERATING LEVEL — Management §6.2, §9.1
+   ========================================================================= */
+
+export type LevelEvent = {
+  readonly id: string;
+  readonly from: OperatingLevel | null;
+  readonly to: OperatingLevel;
+  readonly cause: DegradationCause;
+  readonly note: string;
+  readonly at: Date;
+  readonly setByName: string | null;
+};
+
+/** Where the club is right now. Defaults to normal — the column is NOT NULL. */
+export async function currentLevel(db: ArmoryReader): Promise<OperatingLevel> {
+  const [settings] = await db
+    .select({ level: schema.clubSettings.operatingLevel })
+    .from(schema.clubSettings)
+    .limit(1);
+
+  return settings?.level ?? "normal";
+}
+
+/**
+ * Every move, newest first.
+ *
+ * §6.2: "the value of this control over a season is the record of why the club
+ * degraded". Named rather than anonymous, because a degradation is an
+ * operational decision a person made and §12.1 attributes every one of those.
+ */
+export async function levelHistory(
+  db: ArmoryReader,
+  input: { readonly since: Date },
+): Promise<LevelEvent[]> {
+  const rows = await db
+    .select({
+      id: schema.operatingLevelEvents.id,
+      from: schema.operatingLevelEvents.fromLevel,
+      to: schema.operatingLevelEvents.toLevel,
+      cause: schema.operatingLevelEvents.cause,
+      note: schema.operatingLevelEvents.note,
+      at: schema.operatingLevelEvents.createdAt,
+      firstName: schema.people.firstName,
+      lastName: schema.people.lastName,
+    })
+    .from(schema.operatingLevelEvents)
+    .leftJoin(
+      schema.staffUsers,
+      eq(schema.staffUsers.id, schema.operatingLevelEvents.setByStaffId),
+    )
+    .leftJoin(schema.people, eq(schema.people.id, schema.staffUsers.personId))
+    .where(gte(schema.operatingLevelEvents.createdAt, input.since))
+    .orderBy(asc(schema.operatingLevelEvents.createdAt));
+
+  return rows
+    .map((row) => ({
+      id: row.id,
+      from: row.from,
+      to: row.to,
+      cause: row.cause,
+      note: row.note,
+      at: row.at,
+      setByName:
+        row.firstName && row.lastName ? `${row.firstName} ${row.lastName}` : null,
+    }))
+    .reverse();
+}
+
+/* ============================================================================
+   NEAR-MISSES — Management §9.2
+   ========================================================================= */
+
+/**
+ * Reports, newest first.
+ *
+ * The reporter's NAME is resolved here and the caller decides whether to render
+ * it — a list must not, per `attribution` in src/domain/near-miss.ts, because a
+ * named report beside an anonymous one makes the anonymous one conspicuous.
+ * Resolving it does not leak it; rendering it in a list would.
+ */
+export async function nearMisses(
+  db: ArmoryReader,
+  input: { readonly since: Date },
+): Promise<NearMissRecord[]> {
+  const rows = await db
+    .select({
+      id: schema.nearMissReports.id,
+      kind: schema.nearMissReports.kind,
+      whatHappened: schema.nearMissReports.whatHappened,
+      location: schema.nearMissReports.location,
+      reportedAt: schema.nearMissReports.createdAt,
+      reportedByStaffId: schema.nearMissReports.reportedByStaffId,
+      firstName: schema.people.firstName,
+      lastName: schema.people.lastName,
+    })
+    .from(schema.nearMissReports)
+    .leftJoin(
+      schema.staffUsers,
+      eq(schema.staffUsers.id, schema.nearMissReports.reportedByStaffId),
+    )
+    .leftJoin(schema.people, eq(schema.people.id, schema.staffUsers.personId))
+    .where(gte(schema.nearMissReports.createdAt, input.since))
+    .orderBy(asc(schema.nearMissReports.createdAt));
+
+  return rows
+    .map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      whatHappened: row.whatHappened,
+      location: row.location,
+      reportedAt: row.reportedAt,
+      reportedByStaffId: row.reportedByStaffId,
+      reporterName:
+        row.firstName && row.lastName ? `${row.firstName} ${row.lastName}` : null,
+    }))
+    .reverse();
+}
+
+/* ============================================================================
+   THE LEDGER — Management §10
+   ========================================================================= */
+
+export type BalanceRow = {
+  readonly personId: string;
+  readonly name: string;
+  readonly memberNumber: number | null;
+  readonly outstandingKobo: Kobo;
+  /** Days since the oldest unsettled charge. §10 wants balances "with an age". */
+  readonly ageDays: number;
+};
+
+/**
+ * What members owe, oldest debt first.
+ *
+ * Ordered by AGE rather than by amount, which is the order that matters: §10
+ * asks for "balances by member, with age", and a large fresh balance is a member
+ * who has just been charged while a small old one is a conversation nobody has
+ * had. Sorting by size would put the second at the bottom forever.
+ */
+export async function balances(
+  db: ArmoryReader,
+  input: { readonly now: Date },
+): Promise<BalanceRow[]> {
+  const rows = await db
+    .select({
+      personId: schema.charges.payerPersonId,
+      firstName: schema.people.firstName,
+      lastName: schema.people.lastName,
+      totalKobo: schema.charges.totalKobo,
+      raisedAt: schema.charges.createdAt,
+    })
+    .from(schema.charges)
+    .innerJoin(schema.people, eq(schema.people.id, schema.charges.payerPersonId))
+    .where(eq(schema.charges.isSettled, false));
+
+  const numbers = new Map(
+    (
+      await db
+        .select({
+          personId: schema.memberships.personId,
+          memberNumber: schema.memberships.memberNumber,
+        })
+        .from(schema.memberships)
+    ).map((row) => [row.personId, row.memberNumber]),
+  );
+
+  const byPerson = new Map<
+    string,
+    { name: string; total: number; oldest: Date }
+  >();
+
+  for (const row of rows) {
+    const existing = byPerson.get(row.personId);
+    const amount = Number(row.totalKobo);
+    if (existing) {
+      existing.total += amount;
+      if (row.raisedAt < existing.oldest) existing.oldest = row.raisedAt;
+      continue;
+    }
+    byPerson.set(row.personId, {
+      name: `${row.firstName} ${row.lastName}`.trim(),
+      total: amount,
+      oldest: row.raisedAt,
+    });
+  }
+
+  return [...byPerson.entries()]
+    .map(([personId, entry]) => ({
+      personId,
+      name: entry.name,
+      memberNumber: numbers.get(personId) ?? null,
+      outstandingKobo: fromStorage(entry.total),
+      ageDays: Math.max(0, -lagosDaysBetween(input.now, entry.oldest)),
+    }))
+    .sort((a, b) => b.ageDays - a.ageDays);
+}
+
+export type FailedPaymentRow = {
+  readonly id: string;
+  readonly personId: string;
+  readonly name: string;
+  readonly amountKobo: Kobo;
+  readonly purpose: string;
+  readonly at: Date;
+  readonly gatewayReference: string | null;
+};
+
+/**
+ * Payments that did not complete.
+ *
+ * §10 wants these "with the remedy, and whether the member has been told". The
+ * remedy is derivable from the purpose; whether the member has been told is NOT
+ * recorded anywhere, and this read does not invent it. A column claiming a
+ * member had been contacted when nobody had would be worse than the gap.
+ */
+export async function failedPayments(
+  db: ArmoryReader,
+  input: { readonly since: Date },
+): Promise<FailedPaymentRow[]> {
+  const rows = await db
+    .select({
+      id: schema.payments.id,
+      personId: schema.payments.personId,
+      firstName: schema.people.firstName,
+      lastName: schema.people.lastName,
+      amountKobo: schema.payments.amountKobo,
+      purpose: schema.payments.purpose,
+      at: schema.payments.createdAt,
+      gatewayReference: schema.payments.gatewayReference,
+    })
+    .from(schema.payments)
+    .innerJoin(schema.people, eq(schema.people.id, schema.payments.personId))
+    .where(
+      and(
+        /* `failed` only. PAYMENT_STATUSES has no "abandoned" — a Paystack
+           checkout somebody closed leaves no payment row at all, so it is a
+           reconciliation gap rather than a failed payment, and §10 handles it
+           on the unmatched side of the sweep. */
+        eq(schema.payments.status, "failed"),
+        gte(schema.payments.createdAt, input.since),
+      ),
+    )
+    .orderBy(asc(schema.payments.createdAt));
+
+  return rows
+    .map((row) => ({
+      id: row.id,
+      personId: row.personId,
+      name: `${row.firstName} ${row.lastName}`.trim(),
+      amountKobo: fromStorage(row.amountKobo),
+      purpose: row.purpose,
+      at: row.at,
+      gatewayReference: row.gatewayReference,
+    }))
+    .reverse();
+}
+
+/** Every charge in a window, for the revenue mix and the takings split. */
+export async function chargesSince(
+  db: ArmoryReader,
+  input: { readonly since: Date },
+): Promise<RevenueCharge[]> {
+  const rows = await db
+    .select({
+      referenceType: schema.charges.referenceType,
+      totalKobo: schema.charges.totalKobo,
+      raisedAt: schema.charges.createdAt,
+    })
+    .from(schema.charges)
+    .where(gte(schema.charges.createdAt, input.since));
+
+  return rows.map((row) => ({
+    referenceType: row.referenceType as RevenueCharge["referenceType"],
+    totalKobo: fromStorage(row.totalKobo),
+    raisedAt: row.raisedAt,
+  }));
+}
+
+/* ============================================================================
+   THE TWO FALSIFYING NUMBERS, AND THE CLOCK — Management §11.2, §11.4
+   ========================================================================= */
+
+/**
+ * Visits and F&B sales in a window, as `visitMix` needs them.
+ *
+ * §14's warning applies here more than anywhere: this reads participations and
+ * rounds across a period, which is the aggregate that must never slow a
+ * check-in. Bounded to the window, and the moment the club has a season of
+ * history this wants a materialised view refreshed on a schedule.
+ */
+export async function visitEvidence(
+  db: ArmoryReader,
+  input: { readonly since: Date },
+): Promise<{
+  readonly visits: VisitRecord[];
+  readonly service: ServiceRecord[];
+}> {
+  const participations = await db
+    .select({
+      personId: schema.participations.personId,
+      at: schema.participations.checkedInAt,
+      participationId: schema.participations.id,
+    })
+    .from(schema.participations)
+    .where(gte(schema.participations.checkedInAt, input.since));
+
+  const rounds = await db
+    .select({ participationId: schema.rounds.participationId })
+    .from(schema.rounds);
+
+  const fired = new Set(rounds.map((row) => row.participationId));
+
+  const service = await db
+    .select({
+      personId: schema.charges.payerPersonId,
+      at: schema.charges.createdAt,
+    })
+    .from(schema.charges)
+    .where(
+      and(
+        eq(schema.charges.referenceType, "fnb"),
+        gte(schema.charges.createdAt, input.since),
+      ),
+    );
+
+  return {
+    visits: participations.map((row) => ({
+      personId: row.personId,
+      at: row.at,
+      firedRound: fired.has(row.participationId),
+    })),
+    service,
+  };
+}
+
+/**
+ * Check-in durations in seconds, for §11.4's distribution.
+ *
+ * Only rows where the clock actually started. A participation written before
+ * `arrival_at` existed contributes nothing rather than a zero — S2, and a zero
+ * here would report an instantaneous check-in that never happened.
+ */
+export async function checkInDurations(
+  db: ArmoryReader,
+  input: { readonly since: Date },
+): Promise<number[]> {
+  const rows = await db
+    .select({
+      arrivalAt: schema.participations.arrivalAt,
+      checkedInAt: schema.participations.checkedInAt,
+    })
+    .from(schema.participations)
+    .where(gte(schema.participations.checkedInAt, input.since));
+
+  return rows
+    .filter((row) => row.arrivalAt !== null)
+    .map(
+      (row) =>
+        (row.checkedInAt.getTime() - (row.arrivalAt as Date).getTime()) / 1000,
+    );
 }

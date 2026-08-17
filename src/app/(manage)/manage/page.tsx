@@ -1,19 +1,16 @@
 import Link from "next/link";
-import { getArmoryDb } from "@/db/armory/client";
 import { panelsFor, type DayPanel } from "@/domain/grants";
 import { gateSummary, outstanding } from "@/lib/content-gate";
 import { routes } from "@/lib/site";
 import { lagosDateKey } from "@/lib/time";
 import { Panel, type EmptyState } from "@/components/manage/Panel";
 import {
-  applicationsQueue,
-  expectedArrivals,
-  expiryRegister,
   type ApplicationRow,
   type ArrivalRow,
   type ExpiryRow,
 } from "@/server/armory/manage-reads";
 import { requireStaffPrincipal } from "@/server/armory/manage-session";
+import { manageSource } from "@/server/armory/manage-source";
 
 /**
  * THE DAY — Management System §6.
@@ -50,12 +47,16 @@ export default async function TheDay() {
   const shown = new Set(panels.map((panel) => panel.id));
 
   const now = new Date();
-  const db = getArmoryDb();
+
+  /* Real or demonstration — decided once per request, in one place. A page that
+     reached for a database client directly would bypass the switch, which is why
+     this holds a source rather than a `db`. */
+  const source = await manageSource(principal);
 
   const [arrivals, applications, expiries] = await Promise.all([
-    shown.has("arrivals") ? expectedArrivals(db, { now }) : null,
-    shown.has("applications") ? applicationsQueue(db, { now }) : null,
-    shown.has("expiries-today") ? expiryRegister(db, { now, withinDays: 30 }) : null,
+    shown.has("arrivals") ? source.arrivals(now) : null,
+    shown.has("applications") ? source.applications(now) : null,
+    shown.has("expiries-today") ? source.expiries(now, 30) : null,
   ]);
 
   return (

@@ -1,16 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getArmoryDb } from "@/db/armory/client";
 import { admitsSurface } from "@/domain/grants";
 import { routes } from "@/lib/site";
 import { Panel } from "@/components/manage/Panel";
-import {
-  applicationsQueue,
-  roster,
-  type ApplicationRow,
-  type RosterRow,
-} from "@/server/armory/manage-reads";
+import type { ApplicationRow, RosterRow } from "@/server/armory/manage-reads";
 import { requireStaffPrincipal } from "@/server/armory/manage-session";
+import { manageSource } from "@/server/armory/manage-source";
 
 /**
  * PEOPLE — Management System §8. The roster, and the pipeline that fills it.
@@ -35,7 +30,7 @@ export default async function People() {
   const principal = await requireStaffPrincipal();
   if (!admitsSurface(principal, "people")) notFound();
 
-  const db = getArmoryDb();
+  const source = await manageSource(principal);
   const now = new Date();
 
   /**
@@ -48,8 +43,8 @@ export default async function People() {
   const mayDecide = principal.grants.has("people_write");
 
   const [members, applications] = await Promise.all([
-    roster(db),
-    mayDecide ? applicationsQueue(db, { now }) : null,
+    source.roster(),
+    mayDecide ? source.applications(now) : null,
   ]);
 
   return (

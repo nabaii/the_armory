@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
-import { getArmoryDb } from "@/db/armory/client";
 import { admitsSurface } from "@/domain/grants";
 import { Panel } from "@/components/manage/Panel";
-import { personRecord } from "@/server/armory/manage-reads";
 import { requireStaffPrincipal } from "@/server/armory/manage-session";
+import { manageSource } from "@/server/armory/manage-source";
 
 /**
  * THE PERSON RECORD — Management System §8.4.
@@ -37,7 +36,8 @@ export default async function PersonPage({
   if (!admitsSurface(principal, "people")) notFound();
 
   const { id } = await params;
-  const person = await personRecord(getArmoryDb(), id);
+  const source = await manageSource(principal);
+  const person = await source.person(id);
   if (!person) notFound();
 
   return (

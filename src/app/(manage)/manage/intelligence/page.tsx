@@ -1,11 +1,17 @@
 import { notFound } from "next/navigation";
-import { getArmoryDb, schema } from "@/db/armory/client";
 import { admitsSurface } from "@/domain/grants";
-import { mixCaveat, revenueMix, type RevenueCharge } from "@/domain/revenue";
-import { format, fromStorage } from "@/lib/money";
+import {
+  CHECK_IN_PROMISE_SECONDS,
+  checkInClock,
+  visitMix,
+  visitMixCaveat,
+} from "@/domain/intelligence";
+import { mixCaveat, revenueMix } from "@/domain/revenue";
+import { format } from "@/lib/money";
 import { addDays } from "@/lib/time";
 import { Panel } from "@/components/manage/Panel";
 import { requireStaffPrincipal } from "@/server/armory/manage-session";
+import { manageSource } from "@/server/armory/manage-source";
 
 /**
  * INTELLIGENCE — Management System §11.
@@ -56,28 +62,28 @@ export default async function Intelligence() {
   const now = new Date();
   const window = { from: addDays(now, -QUARTER_DAYS), to: now };
 
-  const charges: RevenueCharge[] = mayReadCommercial
-    ? (
-        await getArmoryDb()
-          .select({
-            referenceType: schema.charges.referenceType,
-            totalKobo: schema.charges.totalKobo,
-            raisedAt: schema.charges.createdAt,
-          })
-          .from(schema.charges)
-      ).map((row) => ({
-        referenceType: row.referenceType as RevenueCharge["referenceType"],
-        /* `fromStorage`, not a cast. A kobo column arrives from pg as a
-           number or a string depending on its width, and the branded type
-           exists precisely so that boundary is crossed in one documented
-           place rather than by an assertion at each read site. */
-        totalKobo: fromStorage(row.totalKobo),
-        raisedAt: row.raisedAt,
-      }))
-    : [];
+  const source = await manageSource(principal);
+
+  /**
+   * The commercial read is gated, and the operational ones are not.
+   *
+   * A safety officer reaches this surface on `intelligence_operational` and must
+   * see the check-in clock and the visit mix — those are their own evidence for
+   * §11.3's staffing argument. They must not see a naira figure, so the charges
+   * are not even FETCHED for them: a read that never happens cannot leak.
+   */
+  const [charges, evidence, durations] = await Promise.all([
+    mayReadCommercial ? source.charges(window.from) : Promise.resolve([]),
+    source.visitEvidence(window.from),
+    source.checkInDurations(window.from),
+  ]);
 
   const mix = revenueMix(charges, window);
   const caveat = mixCaveat(mix);
+
+  const visits = visitMix({ ...evidence, window });
+  const visitCaveat = visitMixCaveat(visits);
+  const clock = checkInClock(durations);
 
   return (
     <div className="mx-auto flex max-w-[1100px] flex-col gap-3 p-2 lg:p-3">
@@ -134,23 +140,52 @@ export default async function Intelligence() {
         />
       )}
 
-      <Panel
-        title="Non-shooting visit share"
-        empty={{
-          kind: "not_built",
-          line:
-            "Computable from this sprint — a categorised F&B charge on a day with no round fired is the evidence. The screen needs a quarter of capture behind it, and the figure is a floor rather than a census.",
-        }}
-      />
+      {/* THE FIRST FALSIFYING NUMBER — §11.2. Counts, never a percentage. */}
+      <Panel title="Non-shooting visits" count={visits.visits}>
+        {visitCaveat ? (
+          <p className="text-sight-ink">{visitCaveat}</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            <Figure label="Visits with no round fired" value={visits.nonShooting} />
+            <Figure label="Visits where somebody shot" value={visits.shooting} />
+            <Figure
+              label="Known only from something bought"
+              value={visits.fromServiceOnly}
+            />
+          </ul>
+        )}
+        {/* The basis is not optional and not a footnote. A floor honest about
+            being a floor is usable; a census quietly a floor is not. */}
+        <p className="mt-2 text-[11px] leading-snug text-sight-ink">{visits.basis}</p>
+      </Panel>
 
+      {/* §11.4 — a distribution and a breach count, never a mean, never per officer. */}
       <Panel
         title="The check-in clock"
-        empty={{
-          kind: "not_built",
-          line:
-            "The console started timestamping arrivals this sprint. Reported as a distribution and a count over the promise, never as a mean and never per officer.",
-        }}
-      />
+        count={clock.count}
+        needsDecision={clock.overPromise > 0}
+      >
+        {clock.medianSeconds === null ? (
+          <p className="text-sight-ink">
+            Nothing measured yet. The console timestamps a check-in from the moment
+            the sheet opens; these figures begin at the next one.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            <Figure label="Median" value={`${clock.medianSeconds}s`} />
+            <Figure label="Ninetieth percentile" value={`${clock.ninetiethSeconds}s`} />
+            <Figure
+              label={`Over the ${CHECK_IN_PROMISE_SECONDS}-second promise`}
+              value={clock.overPromise}
+              alert={clock.overPromise > 0}
+            />
+          </ul>
+        )}
+        <p className="mt-2 text-[11px] leading-snug text-sight-ink">
+          Never a mean, which hides a bad tail, and never per officer — desk speed
+          is a property of the screens rather than of the staff.
+        </p>
+      </Panel>
 
       <Panel
         title="Member analytics"
@@ -161,5 +196,28 @@ export default async function Intelligence() {
         }}
       />
     </div>
+  );
+}
+
+/** One figure, with its label. Tabular so a column of them lines up. */
+function Figure({
+  label,
+  value,
+  alert = false,
+}: {
+  label: string;
+  value: number | string;
+  alert?: boolean;
+}) {
+  return (
+    <li className="flex items-baseline gap-2">
+      <span>{label}</span>
+      <span
+        data-numeric
+        className={`ml-auto tabular-nums ${alert ? "text-ten-ring-deep font-semibold" : ""}`}
+      >
+        {value}
+      </span>
+    </li>
   );
 }

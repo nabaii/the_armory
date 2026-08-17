@@ -40,9 +40,18 @@ import { cn } from "@/lib/cn";
  */
 export function ManageShell({
   items,
+  banner,
   children,
 }: {
   items: readonly ManageNavItem[];
+  /**
+   * The demonstration banner, rendered by the layout.
+   *
+   * Passed in rather than imported here because this is a client component and
+   * the banner carries a server action. It is a slot rather than an option: the
+   * layout always supplies it, so no management route can render without it.
+   */
+  banner: React.ReactNode;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -89,6 +98,8 @@ export function ManageShell({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Padding-bottom clears the bar, plus the home indicator. Below lg
             only — the rail does not overlay anything. */}
+        {/* Above the content, on every route. A screen cannot opt out of it. */}
+        {banner}
         <main className="min-w-0 flex-1 pb-[calc(68px+env(safe-area-inset-bottom))] lg:pb-0">
           {children}
         </main>

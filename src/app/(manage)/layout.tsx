@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { DemoBanner } from "@/components/manage/DemoBanner";
 import { ManageShell } from "@/components/manage/ManageShell";
 import { manageNavFor } from "@/lib/manage-nav";
 import { requireStaffPrincipal } from "@/server/armory/manage-session";
+import { demoRequested } from "@/server/armory/manage-source";
 
 /**
  * THE MANAGEMENT SYSTEM — a third route group, beside the public site and the
@@ -67,5 +69,19 @@ export default async function ManageLayout({
      somebody's shift. */
   const items = manageNavFor(principal);
 
-  return <ManageShell items={items}>{children}</ManageShell>;
+  /**
+   * Resolved here, once, so the banner and every screen beneath it agree.
+   *
+   * A layout that decided one way while a page decided another would render
+   * demonstration data under no banner, or real data under one — and the second
+   * is worse, because it teaches whoever is watching that the banner means
+   * nothing.
+   */
+  const demo = await demoRequested(principal);
+
+  return (
+    <ManageShell items={items} banner={<DemoBanner on={demo} />}>
+      {children}
+    </ManageShell>
+  );
 }

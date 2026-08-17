@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getArmoryDb } from "@/db/armory/client";
 import { admitsSurface } from "@/domain/grants";
 import { routes } from "@/lib/site";
 import { Panel } from "@/components/manage/Panel";
-import { expiryRegister, type ExpiryRow } from "@/server/armory/manage-reads";
+import type { ExpiryRow } from "@/server/armory/manage-reads";
 import { requireStaffPrincipal } from "@/server/armory/manage-session";
+import { manageSource } from "@/server/armory/manage-source";
 
 /**
  * SAFETY — Management System §9, and the expiry register in particular.
@@ -39,10 +39,8 @@ export default async function Safety() {
    */
   if (!admitsSurface(principal, "safety")) notFound();
 
-  const rows = await expiryRegister(getArmoryDb(), {
-    now: new Date(),
-    withinDays: 90,
-  });
+  const source = await manageSource(principal);
+  const rows = await source.expiries(new Date(), 90);
 
   const lapsed = rows.filter((row) => row.daysRemaining < 0);
   const soon = rows.filter((row) => row.daysRemaining >= 0);
