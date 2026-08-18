@@ -343,13 +343,34 @@ export async function placeBooking(
   revalidatePath(routes.portalBook);
 
   /**
-   * Straight to Today, which is where the booking now lives.
+   * Straight to the booking that was just made.
    *
-   * A confirmation screen was considered and rejected: it is a page whose only
-   * content is a sentence the next screen already says better, and it puts one
-   * more tap between the member and the card that actually holds their booking.
+   * ===========================================================================
+   * THIS USED TO GO TO TODAY, AND TODAY IS NOT ALWAYS ABOUT THIS BOOKING
+   *
+   * The original reasoning was sound and its premise expired. It rejected a
+   * confirmation screen as "a page whose only content is a sentence the next
+   * screen already says better", and sent the member to Today because that is
+   * where their booking lived.
+   *
+   * Today shows the NEXT booking. A member who already has a session on Tuesday
+   * and books one three weeks out is returned to a card describing Tuesday —
+   * the same card they saw before they started. Nothing on the screen says the
+   * booking they just spent three minutes making exists. The most common way to
+   * find out is to make it again.
+   *
+   * `/portal/book/[id]` did not exist when that decision was taken. It does
+   * now, and it is not a sentence: it is the booking, with the guests, the
+   * state of their links, and the way to cancel. Landing there is the same
+   * argument the original comment made — go to the thing that holds the
+   * booking — applied to a screen that actually holds this one.
+   *
+   * `bookingId` is non-null on every path that reaches here: it is assigned
+   * inside the transaction that drafted the booking, and any failure before
+   * that returns or throws. The fallback is Today rather than a crash, because
+   * a member whose booking succeeded must never be shown an error about it.
    */
-  redirect(routes.portal);
+  redirect(bookingId ? routes.portalBooking(bookingId) : routes.portal);
 }
 
 /* ============================================================================

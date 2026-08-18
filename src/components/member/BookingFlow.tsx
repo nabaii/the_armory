@@ -122,7 +122,12 @@ export function BookingFlow({
           {companions.map((companion, index) => (
             <div
               key={index}
-              className="rounded-control border border-[var(--rule)]/40 p-3"
+              /* Flat glazing rather than a plain outline: a companion is one of
+                 several repeated objects on this screen, which is exactly what
+                 `u-glaze-flat` is for — the material without the filter, since
+                 thirty backdrop layers is a dropped frame and a name field has
+                 nothing to show through itself. */
+              className="u-glaze-flat u-glaze-edge rounded-control p-3"
             >
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1">
@@ -299,7 +304,7 @@ export function BookingFlow({
 
 function SummaryRow({ term, value }: { term: string; value: string }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-4 border-b border-[var(--rule)]/25 pb-2">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 border-b border-[var(--rule)]/25 pb-2 last:border-b-0">
       <dt>
         <Caption>{term}</Caption>
       </dt>

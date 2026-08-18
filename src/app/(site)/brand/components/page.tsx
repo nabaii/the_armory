@@ -34,6 +34,7 @@ import {
 import { WeekRail, type RailDay } from "@/components/member/WeekRail";
 import { Agenda } from "@/components/member/Agenda";
 import { SlotBoard } from "@/components/member/SlotBoard";
+import { BookingRail } from "@/components/member/BookingRail";
 import { agendaFrom, calendarDays, calendarMonth } from "@/domain/calendar";
 import { programmeForDay } from "@/domain/programme";
 import type { Slot } from "@/domain/availability";
@@ -488,6 +489,37 @@ export default function ComponentsPage() {
           />
         </div>
         </Panel>
+      </Section>
+
+      <Ref
+        n="20"
+        name="BookingRail"
+        note="Where you are in the booking, what you have already chosen, and the way back to any of it. Every settled step shows its ANSWER rather than its name, because the thing a member most wants to check two steps in is the time they picked — and the old flow, which said only 'Step 3 of 5' and offered one quiet link, could not tell them without losing their place. Built from the steps that APPLY: a table booking touches no line, so it is three steps and says three, where the old screens counted to five past a step three the member never saw."
+      />
+      <Section ground="terrazzo" field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Panel>
+            <Caption className="mb-2">Shooting — four steps, on the third</Caption>
+            <BookingRail
+              steps={[
+                { label: "When", answer: "Thursday 20 August · 6:00 pm", href: routes.portalBookNew, current: false },
+                { label: "What for", answer: "Shoot", href: routes.portalBookNew, current: false },
+                { label: "Which line", answer: null, href: null, current: true },
+                { label: "Who, and confirm", answer: null, href: null, current: false },
+              ]}
+            />
+          </Panel>
+          <Panel>
+            <Caption className="mb-2">A table — three steps, and it says three</Caption>
+            <BookingRail
+              steps={[
+                { label: "When", answer: "Saturday 22 August · 7:00 pm", href: routes.portalBookNew, current: false },
+                { label: "What for", answer: "A table", href: routes.portalBookNew, current: false },
+                { label: "Who, and confirm", answer: null, href: null, current: true },
+              ]}
+            />
+          </Panel>
+        </div>
       </Section>
     </>
   );
