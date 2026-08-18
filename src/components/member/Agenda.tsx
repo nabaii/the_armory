@@ -72,6 +72,9 @@ export function Agenda({
         >
           <Link
             href={hrefForDay(item.dateKey)}
+            /* This list sits ON the Diary and selects a day within it. Same
+               screen, same rule — see DiaryCalendar's day cell. */
+            scroll={false}
             className={cn(
               "flex gap-3 py-2 no-underline",
               "transition-colors duration-[var(--duration-fast)]",

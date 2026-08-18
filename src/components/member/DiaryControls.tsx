@@ -81,6 +81,10 @@ export function ModeSwitch({
           <Link
             key={option}
             href={option === "programme" ? programmeHref : availabilityHref}
+            /* Two readings of one day, on one screen — so switching between
+               them must not move the page. The argument is on the day cell in
+               DiaryCalendar. */
+            scroll={false}
             aria-current={active ? "true" : undefined}
             className={cn(
               "rounded-control px-2 py-1 u-kicker no-underline",

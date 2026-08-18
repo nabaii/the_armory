@@ -301,6 +301,34 @@ function DayCell({
         <Link
           ref={register}
           href={cell.href}
+          /**
+           * THE SCREEN MUST NOT JUMP WHEN THE SCREEN'S OWN STATE CHANGES.
+           *
+           * This is the canonical note for a rule that now applies in three
+           * places; the others point here.
+           *
+           * Next scrolls to the top of the document on every navigation, which
+           * is right when a link takes you somewhere else and wrong for every
+           * link on this calendar. A day cell does not leave the Diary — it
+           * changes `?day=` and re-renders the same screen — so the member taps
+           * the twenty-seventh, the page throws them back to the page header,
+           * and the day panel they were reaching for is now off-screen below.
+           *
+           * It is worst exactly where the surface is best used: scanning a
+           * month means half a dozen taps, and every one of them cost the
+           * member their place. The optimistic selection in this component was
+           * built to make those taps feel instant, and the scroll reset was
+           * undoing it on the same frame.
+           *
+           * `scroll={false}` is therefore not a nicety here. The test for
+           * applying it is narrow and worth stating: does this link change the
+           * state of the screen you are on, or does it take you to a different
+           * one? Only the first. A slot chip advancing to the next booking step
+           * SHOULD go to the top, because the content beneath it has been
+           * entirely replaced and leaving the member scrolled into the middle
+           * of a new question is its own defect.
+           */
+          scroll={false}
           aria-current={selected ? "date" : undefined}
           aria-label={markSummary(cell, String(cell.dayOfMonth))}
           tabIndex={tabbable ? 0 : -1}
@@ -349,6 +377,8 @@ function MonthNav({ view }: { view: CalendarView }) {
             no cheap way back otherwise, and paging is not it. */}
         <Link
           href={view.todayHref}
+          /* Same screen, same rule. See the day cell above. */
+          scroll={false}
           className={cn(
             "inline-flex min-h-5 items-center rounded-control px-2 py-1",
             "border border-[var(--rule)]/50 u-kicker no-underline",
@@ -410,6 +440,9 @@ function MonthArrow({
     <Link
       href={href}
       aria-label={label}
+      /* Paging the month keeps the member where they are reading. See the day
+         cell's note. */
+      scroll={false}
       className={cn(
         shell,
         "text-[var(--ink)] no-underline hover:bg-[var(--rule)]/15",
