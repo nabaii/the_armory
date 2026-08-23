@@ -65,7 +65,7 @@ const TIER = {
   guestConcurrentMax: 2,
   canOwnFirearm: true,
   canStoreFirearm: false,
-  disciplineAccess: ["25m-pistol"],
+  disciplineAccess: ["10m-pistol"],
   bookingHorizonDays: 30,
   concurrentBookingsMax: 2,
 };
@@ -376,7 +376,7 @@ describe("the booking horizon — §4.2's MAY_BOOK", () => {
       capability: "MAY_BOOK",
       now,
       slotStart,
-      discipline: "25m-pistol",
+      discipline: "10m-pistol",
       heldBookings: 0,
     });
 

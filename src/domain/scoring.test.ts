@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { disciplines } from "@/content/disciplines";
 import {
   cardsUntilTrend,
   describeScore,
@@ -48,19 +49,22 @@ describe("the format table", () => {
   });
 
   it("offers a format for every discipline the club runs", () => {
-    /* The four in src/content/disciplines.ts. A discipline that can be booked
-       and cannot be scored is a lane that records nothing. */
-    for (const discipline of [
-      "10m-air-rifle",
-      "50m-range",
-      "25m-pistol",
-      "10m-pistol",
-    ]) {
-      assert.ok(
-        formatsFor(discipline).length > 0,
-        `nothing to score for ${discipline}`,
-      );
+    /* Read from src/content/disciplines.ts rather than listed here. A
+       discipline that can be booked and cannot be scored is a lane that
+       records nothing — and a hand-copied list is how that goes unnoticed,
+       which is exactly what happened when 25m pistol was retired and this
+       test went on asserting against a slug the club no longer runs. */
+    for (const { slug } of disciplines) {
+      assert.ok(formatsFor(slug).length > 0, `nothing to score for ${slug}`);
     }
+  });
+
+  it("offers no format for a discipline the club has retired", () => {
+    /* The other half of the same guarantee. Retiring a discipline means
+       removing its formats too, or the lane keeps offering a course of fire
+       for a range that no longer exists. */
+    assert.equal(formatsFor("25m-pistol").length, 0);
+    assert.equal(formatById("25m-pistol/60"), null);
   });
 
   it("hides a retired format from the lane and still resolves it for history", () => {

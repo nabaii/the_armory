@@ -51,7 +51,7 @@
  *
  * §14 does not list score formats as a blocking item, so they are not blocking
  * — but they are the club's to set, not the build team's. What is below is the
- * ISSF course of fire for each of the four disciplines in src/content/
+ * ISSF course of fire for each of the three disciplines in src/content/
  * disciplines.ts, which is the right default and is almost certainly not the
  * final list: a club runs practice formats and club matches that no federation
  * publishes.
@@ -166,35 +166,6 @@ export const SCORE_FORMATS: readonly ScoreFormat[] = [
   {
     id: "50m-range/20-practice",
     discipline: "50m-range",
-    label: "20 shots practice",
-    shots: 20,
-    scale: 1,
-    maxTotal: 200,
-    active: true,
-  },
-
-  /* ---- 25m pistol ---- */
-  {
-    id: "25m-pistol/60",
-    discipline: "25m-pistol",
-    label: "60 shots",
-    shots: 60,
-    scale: 1,
-    maxTotal: 600,
-    active: true,
-  },
-  {
-    id: "25m-pistol/30-precision",
-    discipline: "25m-pistol",
-    label: "30 shots precision",
-    shots: 30,
-    scale: 1,
-    maxTotal: 300,
-    active: true,
-  },
-  {
-    id: "25m-pistol/20-practice",
-    discipline: "25m-pistol",
     label: "20 shots practice",
     shots: 20,
     scale: 1,

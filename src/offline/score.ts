@@ -124,7 +124,7 @@ export function buildScore(
   /**
    * The card has to match the bay.
    *
-   * The lane is the physical truth of what was shot — a 25m pistol card cannot
+   * The lane is the physical truth of what was shot — a 10m pistol card cannot
    * have been fired on a 10m air rifle bay, whatever the booking said. Checked
    * against the lane rather than against the booking's discipline for exactly
    * that reason: a shooter moved to a different bay mid-session has a booking

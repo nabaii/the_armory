@@ -190,7 +190,6 @@ const LAST = [
 const DISCIPLINES = [
   "10m-air-rifle",
   "10m-air-pistol",
-  "25m-pistol",
   "50m-rifle-prone",
   "shotgun-trap",
 ] as const;

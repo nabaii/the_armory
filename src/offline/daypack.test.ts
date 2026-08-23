@@ -35,7 +35,7 @@ const TIER = {
   guestConcurrentMax: 2,
   canOwnFirearm: true,
   canStoreFirearm: false,
-  disciplineAccess: ["10m-air-rifle", "25m-pistol"],
+  disciplineAccess: ["10m-air-rifle", "10m-pistol"],
   bookingHorizonDays: 14,
   concurrentBookingsMax: 2,
   active: true,
@@ -49,7 +49,7 @@ function pack(overrides: Partial<DayPack> = {}): DayPack {
     activeWaiverVersionId: "waiver-4",
     waiverValidityDays: null,
     storageEnabled: false,
-    disciplinesRequiringQualification: ["25m-pistol"],
+    disciplinesRequiringQualification: ["10m-pistol"],
 
     tiers: [TIER],
     people: [
@@ -79,7 +79,7 @@ function pack(overrides: Partial<DayPack> = {}): DayPack {
     qualifications: [
       {
         personId: "p-host",
-        discipline: "25m-pistol",
+        discipline: "10m-pistol",
         level: "unsupervised",
         expiresAt: "2027-01-01",
       },
@@ -191,7 +191,7 @@ describe("offline decisions equal server decisions", () => {
         guestConcurrentMax: 2,
         canOwnFirearm: true,
         canStoreFirearm: false,
-        disciplineAccess: ["10m-air-rifle", "25m-pistol"],
+        disciplineAccess: ["10m-air-rifle", "10m-pistol"],
         bookingHorizonDays: 14,
         concurrentBookingsMax: 2,
       },
@@ -212,7 +212,7 @@ describe("offline decisions equal server decisions", () => {
     ],
     qualifications: [
       {
-        discipline: "25m-pistol",
+        discipline: "10m-pistol",
         level: "unsupervised",
         expiresAt: new Date("2027-01-01"),
       },
@@ -248,7 +248,7 @@ describe("offline decisions equal server decisions", () => {
       {
         capability: "MAY_SHOOT_DISCIPLINE" as const,
         now: NOW,
-        discipline: "25m-pistol",
+        discipline: "10m-pistol",
         requiresQualification: true,
       },
       {
@@ -451,7 +451,7 @@ describe("pack lookups", () => {
 
   it("reads the qualification rule from the pack, not from a hard-coded list", () => {
     const indexed = hydrate(pack());
-    assert.equal(requiresQualification(indexed, "25m-pistol"), true);
+    assert.equal(requiresQualification(indexed, "10m-pistol"), true);
     assert.equal(requiresQualification(indexed, "10m-air-rifle"), false);
   });
 

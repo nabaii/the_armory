@@ -50,7 +50,7 @@ export default function SportPage() {
       <PageHeader
         kicker="Sport & competition"
         title="Built to standard, and built to be measured."
-        lead="The claim is specific and checkable: national and international competition specification across four disciplines, with automatic targeting and scoring on the air rifle range."
+        lead="The claim is specific and checkable: national and international competition specification across three disciplines, with automatic targeting and scoring on the air rifle range."
       />
 
       {/* The claim, substantiated. Facts rather than adjectives — this is the
@@ -62,10 +62,10 @@ export default function SportPage() {
           className="mt-4 max-w-[46rem]"
           caption="Competition specification"
           rows={[
-            { label: "Disciplines", value: "4" },
+            { label: "Disciplines", value: "3" },
             { label: "Air rifle", value: "10 m · 8 lanes · automatic" },
             { label: "Rifle", value: "50 m · 6 lanes" },
-            { label: "Pistol", value: "25 m and 10 m, covered outdoor" },
+            { label: "Pistol", value: "10 m, covered outdoor" },
             { label: "Scoring", value: "Machine-verified on air rifle" },
             { label: "Supervision", value: "Range officer on every line" },
             { label: "Location", value: "Abuja National Stadium, FCT" },

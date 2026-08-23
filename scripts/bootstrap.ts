@@ -120,7 +120,7 @@ const deviceToken = randomBytes(32).toString("hex");
    THE CLUB
    -------------------------------------------------------------------------- */
 
-const DISCIPLINES = ["10m-air-rifle", "50m-range", "25m-pistol", "10m-pistol"];
+const DISCIPLINES = ["10m-air-rifle", "50m-range", "10m-pistol"];
 
 async function bootstrap() {
   const db = getArmoryDb();

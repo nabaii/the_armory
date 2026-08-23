@@ -23,7 +23,7 @@ export const fixtureTiers: readonly Tier[] = [
     positioning:
       "For the frequent visitor. Range access and priority booking, without the club.",
     inclusions: [
-      "Priority booking on all four ranges",
+      "Priority booking on all three ranges",
       "Range fees included",
       "Guest rate for anyone you bring",
     ],

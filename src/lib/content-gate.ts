@@ -103,9 +103,9 @@ export const contentGate: GateItem[] = [
     resolved: false,
     severity: "degraded",
     note:
-      "Factual data for the specification tables. Lane counts for the 25m and " +
-      "10m pistol lines are not stated in any source document and currently " +
-      "render as omitted rather than as zero.",
+      "Factual data for the specification tables. The lane count for the 10m " +
+      "pistol line is not stated in any source document and currently renders " +
+      "as omitted rather than as zero.",
   },
   {
     id: "booking-durable-store",

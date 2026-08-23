@@ -63,7 +63,7 @@ function source(overrides: Partial<DayPackSource> = {}): DayPackSource {
     activeWaiverBody: "You accept that a live range is dangerous.",
     waiverValidityDays: null,
     storageEnabled: false,
-    disciplinesRequiringQualification: ["25m-pistol"],
+    disciplinesRequiringQualification: ["10m-pistol"],
 
     people: [
       { id: PERSON, firstName: "Ada", lastName: "Nwosu", photoUrl: null },
@@ -79,7 +79,7 @@ function source(overrides: Partial<DayPackSource> = {}): DayPackSource {
         guestConcurrentMax: 2,
         canOwnFirearm: true,
         canStoreFirearm: false,
-        disciplineAccess: ["10m-air-rifle", "25m-pistol"],
+        disciplineAccess: ["10m-air-rifle", "10m-pistol"],
         bookingHorizonDays: 14,
         concurrentBookingsMax: 2,
         /* Present on the row, absent from a Subject. The field that caught a real
@@ -113,7 +113,7 @@ function source(overrides: Partial<DayPackSource> = {}): DayPackSource {
     qualifications: [
       {
         personId: PERSON,
-        discipline: "25m-pistol",
+        discipline: "10m-pistol",
         level: "unsupervised",
         expiresAt: "2027-01-01T00:00:00.000Z",
       },
@@ -143,7 +143,7 @@ function source(overrides: Partial<DayPackSource> = {}): DayPackSource {
         bookingId: null,
         sessionId: null,
         role: "member_shooter",
-        discipline: "25m-pistol",
+        discipline: "10m-pistol",
         bookingType: "shoot",
         slotStart: "2026-08-12T17:00:00.000Z",
         hostPersonId: null,
@@ -218,7 +218,7 @@ const contexts = [
   {
     capability: "MAY_SHOOT_DISCIPLINE" as const,
     now: NOW,
-    discipline: "25m-pistol",
+    discipline: "10m-pistol",
     bookingType: "shoot",
     requiresQualification: true,
   },

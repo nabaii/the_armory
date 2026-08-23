@@ -51,7 +51,7 @@ export default function HomePage() {
             {
               label: "Competition standard",
               detail:
-                "Built to national and international specification, across four disciplines.",
+                "Built to national and international specification, across three disciplines.",
             },
             {
               label: "Everything provided",
@@ -107,7 +107,7 @@ export default function HomePage() {
           including air rifle." Air rifle leads — it is the beginner entry
           point and the future home of Leagues. */}
       <Section ground="chalk" rhythm="default">
-        <Kicker className="mb-2">Four disciplines</Kicker>
+        <Kicker className="mb-2">Three disciplines</Kicker>
         <H2>Somewhere to start, and somewhere to get serious.</H2>
 
         <div className="mt-6 flex flex-col gap-8">
@@ -120,7 +120,7 @@ export default function HomePage() {
         </div>
 
         <Button href={routes.ranges} variant="secondary" className="mt-6">
-          All four ranges
+          All three ranges
         </Button>
       </Section>
 

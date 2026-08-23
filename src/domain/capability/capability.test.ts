@@ -43,7 +43,7 @@ const FULL_TIER: TierPermissions = {
   guestConcurrentMax: 2,
   canOwnFirearm: true,
   canStoreFirearm: true,
-  disciplineAccess: ["10m-air-rifle", "25m-pistol"],
+  disciplineAccess: ["10m-air-rifle", "10m-pistol"],
   bookingHorizonDays: 14,
   concurrentBookingsMax: 2,
 };
@@ -85,7 +85,7 @@ function member(overrides: Partial<Subject> = {}): Subject {
     ],
     qualifications: [
       {
-        discipline: "25m-pistol",
+        discipline: "10m-pistol",
         level: "unsupervised",
         expiresAt: day("2027-01-01"),
       },
@@ -214,9 +214,9 @@ describe("MAY_BOOK", () => {
       },
     });
     assertBlocked(
-      book(entry, { discipline: "25m-pistol" }),
+      book(entry, { discipline: "10m-pistol" }),
       "DISCIPLINE_NOT_IN_TIER",
-      "25m-pistol",
+      "10m-pistol",
     );
   });
 
@@ -455,7 +455,7 @@ describe("MAY_SHOOT_DISCIPLINE", () => {
     evaluate(subject, {
       capability: "MAY_SHOOT_DISCIPLINE",
       now: NOW,
-      discipline: "25m-pistol",
+      discipline: "10m-pistol",
       requiresQualification: true,
       ...over,
     } as Parameters<typeof evaluate>[1]);
@@ -488,7 +488,7 @@ describe("MAY_SHOOT_DISCIPLINE", () => {
     const stale = member({
       qualifications: [
         {
-          discipline: "25m-pistol",
+          discipline: "10m-pistol",
           level: "unsupervised",
           expiresAt: day("2026-04-02"),
         },

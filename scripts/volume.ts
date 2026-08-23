@@ -90,7 +90,7 @@ function fixture(): DayPack {
     guestConcurrentMax: 3 - (i % 3),
     canOwnFirearm: i < 3,
     canStoreFirearm: i === 0,
-    disciplineAccess: ["10m-air-rifle", "25m-pistol", "50m-range"].slice(0, (i % 3) + 1),
+    disciplineAccess: ["10m-air-rifle", "10m-pistol", "50m-range"].slice(0, (i % 3) + 1),
     bookingHorizonDays: 60 - i * 8,
     concurrentBookingsMax: 4 - (i % 4),
     active: true,
@@ -118,7 +118,7 @@ function fixture(): DayPack {
     activeWaiverBody: "You accept that a live range is dangerous.",
     waiverValidityDays: null,
     storageEnabled: false,
-    disciplinesRequiringQualification: ["25m-pistol"],
+    disciplinesRequiringQualification: ["10m-pistol"],
     tiers,
     people,
     memberships,
@@ -138,7 +138,7 @@ function fixture(): DayPack {
       .filter((_, i) => i % 4 === 0)
       .map((membership) => ({
         personId: membership.personId,
-        discipline: "25m-pistol",
+        discipline: "10m-pistol",
         level: "club",
         expiresAt: new Date(now.getTime() + 200 * DAY).toISOString(),
       })),
@@ -172,7 +172,7 @@ function fixture(): DayPack {
         role: (isGuest ? "guest_shooter" : "member_shooter") as
           | "guest_shooter"
           | "member_shooter",
-        discipline: "25m-pistol",
+        discipline: "10m-pistol",
         bookingType: "shoot",
         slotStart: new Date(now.getTime() + (i % 8) * 3_600_000).toISOString(),
         hostPersonId: isGuest ? people[i % MEMBERS].id : null,
@@ -197,7 +197,7 @@ function fixture(): DayPack {
     })),
     lanes: Array.from({ length: LANES }, (_, i) => ({
       id: id("j", i),
-      discipline: ["10m-air-rifle", "25m-pistol", "50m-range"][i % 3],
+      discipline: ["10m-air-rifle", "10m-pistol", "50m-range"][i % 3],
       number: i + 1,
       status: (i === 3 ? "maintenance" : "available") as "maintenance" | "available",
       positionCapacity: 1,

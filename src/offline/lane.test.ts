@@ -72,7 +72,7 @@ const pack = (overrides: Partial<DayPack> = {}) =>
       },
       {
         id: LANE_PISTOL_1,
-        discipline: "25m-pistol",
+        discipline: "10m-pistol",
         number: 1,
         status: "available",
         positionCapacity: 2,
@@ -413,7 +413,7 @@ describe("capturing a score", () => {
   it("refuses a card that could not have been shot on that bay", () => {
     const result = buildScore(
       pack(),
-      { ...input, formatId: "25m-pistol/60" },
+      { ...input, formatId: "10m-pistol/60" },
       context,
     );
 

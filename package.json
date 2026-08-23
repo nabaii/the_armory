@@ -30,7 +30,8 @@
     "verify": "npm run typecheck && npm run lint && npm run test && npm run gate && npm run volume",
     "verify:full": "npm run verify && npm run build && npm run audit",
     "db:permits": "node --env-file-if-exists=.env.local --import tsx scripts/permits.ts",
-    "db:grants": "node --env-file-if-exists=.env.local --import tsx scripts/grants.ts"
+    "db:grants": "node --env-file-if-exists=.env.local --import tsx scripts/grants.ts",
+    "db:retire": "node --env-file-if-exists=.env.local --import tsx scripts/retire-discipline.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

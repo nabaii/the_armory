@@ -1,5 +1,5 @@
 /**
- * THE FOUR DISCIPLINES — real content.
+ * THE THREE DISCIPLINES — real content.
  *
  * Every fact here is drawn directly from the source documents (Brief, "What we
  * are actually selling"; Design Spec §3, The Ranges). Nothing is invented.
@@ -41,17 +41,6 @@ export const disciplines: readonly Discipline[] = [
     setting: "Indoor firing point with a viewing rail",
     summary:
       "Six lanes at fifty metres, scored by a professional. This is the range that carries the competition standard.",
-  },
-  {
-    slug: "25m-pistol",
-    name: "25m pistol",
-    distanceM: 25,
-    /* Not stated in the source documents — outstanding from Operations. */
-    lanes: PENDING,
-    scoring: "manual",
-    setting: "Covered outdoor firing line",
-    summary:
-      "A covered outdoor line at twenty-five metres, scored by a professional.",
   },
   {
     slug: "10m-pistol",

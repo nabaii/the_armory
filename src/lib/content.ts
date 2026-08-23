@@ -72,9 +72,9 @@ export type Discipline = {
   /** Distance in metres, rendered with tabular numerals. */
   distanceM: number;
   /**
-   * Lane count. `PENDING` where the documents do not state it — the 25m and
-   * 10m pistol lines are described only as "covered outdoor firing line", so
-   * their lane counts are outstanding from Operations.
+   * Lane count. `PENDING` where the documents do not state it — the 10m
+   * pistol line is described only as "covered outdoor firing line", so its
+   * lane count is outstanding from Operations.
    *
    * Pending rather than 0: a zero renders as "0 lanes", which is a falsehood,
    * and §9 requires every claim to be true on the day it ships.

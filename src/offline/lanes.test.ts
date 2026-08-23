@@ -19,7 +19,7 @@ const lane = (
   positionCapacity = 1,
 ): PackLane => ({
   id: `lane-${number}`,
-  discipline: "25m-pistol",
+  discipline: "10m-pistol",
   number,
   status,
   positionCapacity,
@@ -66,7 +66,7 @@ const on = (laneId: string | null, checkedOutAt: string | null = null): LocalPar
 });
 
 const options = (lanes: PackLane[], present: LocalParticipation[] = []) =>
-  lanesFor(hydrate(pack(lanes)), "25m-pistol", present);
+  lanesFor(hydrate(pack(lanes)), "10m-pistol", present);
 
 describe("occupancy comes from what this device did", () => {
   it("counts shooters currently on a lane", () => {
@@ -150,19 +150,19 @@ describe("why there is no lane", () => {
   it("distinguishes a pack with no lanes from a range that is busy", () => {
     /* Three different responses: sync, call someone, or wait. §4.3's rule about
        blocks applies here too. */
-    assert.match(noLaneReason([], "25m-pistol"), /no 25m-pistol lanes on file/);
+    assert.match(noLaneReason([], "10m-pistol"), /no 10m-pistol lanes on file/);
   });
 
   it("names every lane being out of service", () => {
     assert.match(
-      noLaneReason(options([lane(1, "maintenance"), lane(2, "closed")]), "25m-pistol"),
+      noLaneReason(options([lane(1, "maintenance"), lane(2, "closed")]), "10m-pistol"),
       /closed or under maintenance/,
     );
   });
 
   it("names a full range separately", () => {
     assert.match(
-      noLaneReason(options([lane(1, "available", 1)], [on("lane-1")]), "25m-pistol"),
+      noLaneReason(options([lane(1, "available", 1)], [on("lane-1")]), "10m-pistol"),
       /full/,
     );
   });

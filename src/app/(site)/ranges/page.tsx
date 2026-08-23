@@ -36,7 +36,7 @@ import { disciplines } from "@/content/disciplines";
 export const metadata: Metadata = {
   title: "The ranges",
   description:
-    "Four disciplines at The Armory Shooting Sports Club — 10m air rifle with automatic scoring, a 50m range, and 25m and 10m pistol lines. Built to national and international competition standard.",
+    "Three disciplines at The Armory Shooting Sports Club — 10m air rifle with automatic scoring, a 50m range, and a 10m pistol line. Built to national and international competition standard.",
 };
 
 export default function RangesPage() {
@@ -44,8 +44,8 @@ export default function RangesPage() {
     <>
       <PageHeader
         kicker="The ranges"
-        title="Four disciplines, one standard."
-        lead="Eight lanes of machine-scored air rifle, a fifty-metre range, and two covered outdoor pistol lines. Every one of them built to national and international competition specification."
+        title="Three disciplines, one standard."
+        lead="Eight lanes of machine-scored air rifle, a fifty-metre range, and a covered outdoor pistol line. Every one of them built to national and international competition specification."
         primary={cta.secondary}
         secondary={cta.primary}
       />
@@ -87,15 +87,18 @@ export default function RangesPage() {
       {/* The remaining three. */}
       <Section ground="chalk" rhythm="default">
         <Kicker className="mb-2">Also here</Kicker>
-        <H2>Three more lines.</H2>
-        <div className="mt-6 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <H2>Two more lines.</H2>
+        {/* Two columns, not three. The third column was there when there were
+            three secondary lines; with two it leaves a hole on wide screens
+            that reads as a card that failed to load. */}
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
           {disciplines.slice(1).map((d) => (
             <DisciplineCard key={d.slug} discipline={d} />
           ))}
         </div>
         <Body muted className="mt-6">
-          The 50m, 25m and 10m pistol lines are scored by a professional rather
-          than automatically. Lane counts for the two pistol lines are being
+          The 50m range and the 10m pistol line are scored by a professional
+          rather than automatically. The lane count for the pistol line is being
           confirmed.
         </Body>
       </Section>

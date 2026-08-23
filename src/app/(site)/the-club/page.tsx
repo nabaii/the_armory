@@ -51,7 +51,7 @@ export default function TheClubPage() {
         ground="teal"
         kicker="The club"
         title="An evening, not an appointment."
-        lead="Four ranges, a bar that looks onto the firing line, and two decks that are lit after dark. The shooting is the anchor; the evening is the reason people stay."
+        lead="Three ranges, a bar that looks onto the firing line, and two decks that are lit after dark. The shooting is the anchor; the evening is the reason people stay."
       />
 
       {/* The viewing rail, stated explicitly. Spec §3 asks for exactly this:

@@ -162,7 +162,7 @@ const payloads: Record<PushOperation, unknown> = {
   },
   "rounds.create": {
     participationId: PARTICIPATION,
-    discipline: "25m-pistol",
+    discipline: "10m-pistol",
     format: "60-shot",
     totalScore: 548,
     shotDetail: null,
@@ -396,7 +396,7 @@ describe("refusals reach an officer as sentences", () => {
 
   it("a rejection never reads as a stack trace", () => {
     const parsed = parsePush(
-      request("rounds.create", { payload: { discipline: "25m-pistol" } }),
+      request("rounds.create", { payload: { discipline: "10m-pistol" } }),
     );
 
     assert.equal(parsed.ok, false);
